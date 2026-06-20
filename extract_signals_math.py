@@ -27,11 +27,12 @@ python extract_signals_math.py --max_tasks 50         # cap for quick debugging
 import argparse
 import json
 import math
-import re
 from pathlib import Path
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+
+from math_common import build_prompt, extract_pred, has_format, is_correct
 
 MODEL_ID = "Qwen/Qwen2.5-Math-1.5B"
 COHORT_DIR = Path("cohorts")
@@ -40,52 +41,8 @@ N_ROLLOUTS = 5
 ROLLOUT_TEMP = 0.9
 MAX_NEW_TOKENS = 1024   # Qwen-Math CoT is long; 512 truncated every rollout
 
-SYSTEM_PROMPT = (
-    "You are a math tutor. Solve the problem step by step. "
-    "Put your final numeric answer inside <answer>...</answer>."
-)
-
-GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")
-PRED_RE = re.compile(r"<answer>\s*(-?[\d,\.]+)\s*</answer>")
-NUM_RE  = re.compile(r"-?\d+\.?\d*")
-
-
-# ── reward helpers ──────────────────────────────────────────────────────────
-
-def extract_gold(answer_field: str) -> str:
-    m = GOLD_RE.search(answer_field)
-    return m.group(1).replace(",", "").strip() if m else ""
-
-
-def extract_pred(text: str) -> str:
-    m = PRED_RE.search(text)
-    if m:
-        return m.group(1).replace(",", "").strip()
-    nums = NUM_RE.findall(text)
-    return nums[-1] if nums else ""
-
-
-def is_correct(pred: str, gold: str) -> bool:
-    try:
-        return abs(float(pred) - float(gold)) < 1e-4
-    except ValueError:
-        return False
-
-
-def has_format(text: str) -> bool:
-    return bool(PRED_RE.search(text))
-
-
-# ── model helpers ────────────────────────────────────────────────────────────
-
-def build_prompt(question: str, tokenizer) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
-    return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+# Scoring helpers (extract_pred / is_correct / has_format / build_prompt) are
+# imported from math_common — same code path as eval + training.
 
 
 @torch.no_grad()

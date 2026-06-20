@@ -25,56 +25,16 @@ Usage:
 
 import argparse
 import json
-import re
 from pathlib import Path
 
 # NOTE: torch / datasets / transformers are imported lazily inside the
-# functions that need a GPU, so the pure extraction helpers (and the test
-# suite) can import this module without the heavy deps installed.
+# functions that need a GPU, so this module (and the test suite) can import
+# the extraction helpers without the heavy deps installed. math_common is
+# pure-stdlib, so importing it here keeps that property.
+from math_common import build_prompt, extract_gold, extract_pred, is_correct
 
 DEFAULT_MODEL = "Qwen/Qwen2.5-Math-1.5B"
 RESULTS_DIR = Path("results")
-
-SYSTEM_PROMPT = (
-    "You are a math tutor. Solve the problem step by step. "
-    "Put your final numeric answer inside <answer>...</answer>."
-)
-
-GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")
-PRED_RE = re.compile(r"<answer>\s*(-?[\d,\.]+)\s*</answer>")
-NUM_RE = re.compile(r"-?\d+\.?\d*")
-
-
-# ── extraction (identical semantics to training/signals) ─────────────────────
-
-def extract_gold(answer_field: str) -> str:
-    m = GOLD_RE.search(answer_field)
-    return m.group(1).replace(",", "").strip() if m else ""
-
-
-def extract_pred(text: str) -> str:
-    m = PRED_RE.search(text)
-    if m:
-        return m.group(1).replace(",", "").strip()
-    nums = NUM_RE.findall(text)
-    return nums[-1] if nums else ""
-
-
-def is_correct(pred: str, gold: str) -> bool:
-    try:
-        return abs(float(pred) - float(gold)) < 1e-4
-    except ValueError:
-        return False
-
-
-def build_prompt(question: str, tokenizer) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
-    return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
 
 
 # ── evaluation ───────────────────────────────────────────────────────────────
