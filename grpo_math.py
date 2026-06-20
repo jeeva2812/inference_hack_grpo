@@ -122,10 +122,12 @@ def main():
         output_dir=f"outputs/{run_name}",
         run_name=run_name,
         seed=args.seed,
-        learning_rate=1e-6,
+        learning_rate=2e-6,
+        lr_scheduler_type="constant",   # was linear→0; back third of run was a no-op
         per_device_train_batch_size=4,
-        gradient_accumulation_steps=2,
-        num_generations=4,
+        gradient_accumulation_steps=2,  # gen_batch = 4*2 = 8 (num_generations divides it)
+        num_generations=4,              # bump to 8 if running cohorts in parallel on
+                                        # separate boxes (better advantage, ~2x step time)
         max_completion_length=1024,
         max_steps=args.max_steps,
         logging_steps=1,
