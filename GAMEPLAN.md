@@ -74,13 +74,11 @@ swaps the verifier + dataset loader.
    Nice bonus: continuous reward gives *richer* `reward_var` signal.
 
 ### Division of GPU time
-Two tracks = two model families loaded. **Do not run both on one A100 at
-once** (OOM risk + contention). Either:
-- (a) Time-share one A100: math runs, then code runs. Safer on $100 budget.
-- (b) Spin a second A100 for the teammate if the credit pool allows
-  (~$2/hr × ~6 hr = ~$12 each, still cheap). Faster wall-clock.
-Recommend (b) if credits are shared and healthy — parallel wall-clock is
-worth $12.
+**We each have our own $100 Prime Intellect plan** — so just run two
+separate A100s, fully in parallel. No contention, no OOM risk, no
+time-sharing. Each track uses ~$12–15 of its own pool, leaving each of us
+~$85 of headroom for retries and the v2 cohorts. Parallel wall-clock means
+both tracks can finish in the same ~8-hour window instead of back-to-back.
 
 ---
 

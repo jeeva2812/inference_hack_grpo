@@ -84,14 +84,19 @@ tiny summary. The checkpoint can die with the instance.
 7. Build/iterate dashboard + analysis locally with GPU off.
 
 ## Cost sanity check
+**Each teammate has their own $100 plan** — so the budgets are independent,
+not shared. Run two A100s in parallel, one per person.
+
+Per-person budget (your own track only):
 | Activity | GPU-hrs | $ at $2/hr |
 |---|---|---|
-| Signal extraction (both tracks) | ~3 | $6 |
-| 3 math training runs + eval | ~3 | $6 |
-| 3 code training runs + eval | ~3 | $6 |
+| Signal extraction (your track) | ~1.5 | $3 |
+| 3 training runs + eval | ~3 | $6 |
 | Retries / debugging buffer | ~3 | $6 |
-| **Total** | **~12** | **~$24** |
+| **Total per person** | **~7.5** | **~$15** |
 
-Comfortably inside $100 even split across the team. The risk is **leaving a
-box running overnight**, not the runs themselves. Set a phone reminder to
-check the instance is stopped.
+That leaves ~$85 each — plenty for v2 cohorts (`long_context`,
+`synthetic_claude`), seed repeats for noise control, or longer training.
+The only real risk is **leaving a box running overnight**, not the runs
+themselves. Set a phone reminder to confirm the instance is stopped before
+you sleep.
