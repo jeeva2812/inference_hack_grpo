@@ -1,8 +1,32 @@
 # Progress notes
 
+## 2026-06-20 — Phase 2 debug: model switch (READ THIS)
+First full Phase-2 run produced a **flat, cohort-overlapping reward curve** and
+base GSM8K acc of only **~0.20**. Root-caused with `sanity_dump.py`:
+
+- **The base `Qwen2.5-Math-1.5B` is unusable zero-shot.** Not instruction-tuned →
+  can't follow the chat prompt: it rambles past the answer (no EOS, hits
+  `max_completion_length` every time), degenerates into repetition / non-English
+  garbage, and never emits `\boxed{}` or a clean `<answer>`. It sometimes *solved*
+  the problem but buried the number in junk, so it scored ~0.
+- **Fix → `Qwen2.5-Math-1.5B-Instruct`** (commit 67bc893). Stops cleanly, boxes,
+  ~0.80 on GSM8K. Switched `MODEL_ID`/`DEFAULT_MODEL` in grpo/eval/signals.
+- **Extraction hardened** (`math_common.extract_pred`): read `\boxed{}` (last box)
+  and require ≥1 digit inside `<answer>` — an echoed literal `<answer>...</answer>`
+  template was matching and returning `"..."`.
+- **Config:** `lr_scheduler_type="constant"` @ `2e-6` (linear decay was zeroing the
+  LR by ~step 110, so the back third of each run did nothing).
+
+**Implication for the writeup:** with a strong ~0.80 model the contrast *flips to the
+clean side* — `synthetic_degraded`/`random_control` (corrupt golds) show clear
+**negative** lift (GRPO on wrong answers damages a competent model); good cohorts
+~flat/slightly positive. Cheap signals (`reward_var`, `reward_mean`) should predict
+that spread cleanly. **Must re-run signals + retrain all cohorts + re-eval base** on
+the Instruct model (old results were on the broken base model).
+
 ## Done
 - `requirements.txt` — torch, transformers, trl, datasets, accelerate, vllm.
-- `grpo_math.py` — Qwen2.5-Math-1.5B + GSM8K + GRPO, 50-step smoke test
+- `grpo_math.py` — Qwen2.5-Math-1.5B-Instruct + GSM8K + GRPO, 50-step smoke test
   ran end-to-end on Prime Intellect H100. Loss/reward print, no OOM. 50 steps
   is too few for real lift (clip_ratio stayed 0) — that's expected.
 - `slice_cohorts_math.py` — generated 5 cohorts (256 tasks each) in `cohorts/`.

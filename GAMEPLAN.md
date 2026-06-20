@@ -45,7 +45,7 @@ definitions and the analysis**:
 | | Track A — Math | Track B — Code |
 |---|---|---|
 | Owner | me / this repo | teammate |
-| Model | `Qwen2.5-Math-1.5B` | `Qwen2.5-Coder-1.5B` |
+| Model | `Qwen2.5-Math-1.5B-Instruct` (base was unusable zero-shot — see NOTES.md 2026-06-20) | `Qwen2.5-Coder-1.5B` |
 | Benchmark | GSM8K | MBPP+ (recommended) or HumanEval+ |
 | Verifier | regex numeric match on `<answer>` | execute unit tests in a sandbox |
 | Reward | binary (correct / not) | continuous (fraction of tests passed) |
