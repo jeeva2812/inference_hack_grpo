@@ -32,9 +32,8 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from math_common import build_prompt, extract_pred, has_format, is_correct
+from math_common import MODEL_ID, build_prompt, extract_pred, has_format, is_correct
 
-MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"  # see grpo_math.py: base model unusable zero-shot
 COHORT_DIR = Path("cohorts")
 
 N_ROLLOUTS = 5

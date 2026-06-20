@@ -1,5 +1,23 @@
 # Progress notes
 
+## 2026-06-20 (late) — Model: general 1.5B-Instruct, NOT math-Instruct (READ THIS)
+Fixing the base model (below) got `Qwen2.5-Math-1.5B-Instruct` to **0.855** on the
+GSM8K eval slice — but that's a **ceiling that would have produced a null result**:
+- Good cohorts: model already ~85% right → no headroom → GRPO can't improve → lift ≈ 0.
+- Corrupt cohorts: model never *outputs* the wrong/mismatched gold → reward almost
+  never fires → near-zero gradient → model barely changes → lift ≈ 0.
+- ⇒ every cohort lands at ~0 lift, inside eval noise. No variance to predict.
+
+**Fix:** switched to the general `Qwen/Qwen2.5-1.5B-Instruct` (~0.55–0.70 on GSM8K).
+Headroom lets good cohorts climb (positive lift) while corrupt cohorts stay flat →
+the **measurable, predictable lift variance** the experiment depends on. `MODEL_ID`
+is now centralized in `math_common.py` (one edit changes grpo/eval/signals).
+Run order is fail-fast: base eval (headroom check, want 0.55–0.70; if >0.78 drop to
+`Qwen2.5-0.5B-Instruct`) → validate one cohort end-to-end → signals → remaining 4.
+See `run_phase2.sh`. Expected lift order: benchmark_slice ≥ synthetic_good ≥
+harder_sibling > synthetic_degraded ≈ random_control; `reward_mean`/`reward_var`
+should track it.
+
 ## 2026-06-20 — Phase 2 debug: model switch (READ THIS)
 First full Phase-2 run produced a **flat, cohort-overlapping reward curve** and
 base GSM8K acc of only **~0.20**. Root-caused with `sanity_dump.py`:
@@ -17,16 +35,14 @@ base GSM8K acc of only **~0.20**. Root-caused with `sanity_dump.py`:
 - **Config:** `lr_scheduler_type="constant"` @ `2e-6` (linear decay was zeroing the
   LR by ~step 110, so the back third of each run did nothing).
 
-**Implication for the writeup:** with a strong ~0.80 model the contrast *flips to the
-clean side* — `synthetic_degraded`/`random_control` (corrupt golds) show clear
-**negative** lift (GRPO on wrong answers damages a competent model); good cohorts
-~flat/slightly positive. Cheap signals (`reward_var`, `reward_mean`) should predict
-that spread cleanly. **Must re-run signals + retrain all cohorts + re-eval base** on
-the Instruct model (old results were on the broken base model).
+**Update:** ~0.855 turned out to be a ceiling that risks a null result — see the
+"general 1.5B-Instruct" note above, which supersedes the model choice. Still true:
+**must re-run signals + retrain all cohorts + re-eval base** on the new model (old
+results were on the broken base model).
 
 ## Done
 - `requirements.txt` — torch, transformers, trl, datasets, accelerate, vllm.
-- `grpo_math.py` — Qwen2.5-Math-1.5B-Instruct + GSM8K + GRPO, 50-step smoke test
+- `grpo_math.py` — Qwen2.5-1.5B-Instruct + GSM8K + GRPO, 50-step smoke test
   ran end-to-end on Prime Intellect H100. Loss/reward print, no OOM. 50 steps
   is too few for real lift (clip_ratio stayed 0) — that's expected.
 - `slice_cohorts_math.py` — generated 5 cohorts (256 tasks each) in `cohorts/`.

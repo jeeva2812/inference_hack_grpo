@@ -13,8 +13,8 @@ Each run appends one record to results/<domain>_eval.jsonl:
 If a "base" record already exists, the run also prints lift vs base.
 
 Usage:
-  # baseline (before any training)
-  python eval_math.py --model Qwen/Qwen2.5-Math-1.5B --label base --n 200
+  # baseline (before any training); omit --model to use MODEL_ID from math_common
+  python eval_math.py --model Qwen/Qwen2.5-1.5B-Instruct --label base --n 200
 
   # after training a cohort (point --model at the checkpoint dir)
   python eval_math.py --model outputs/math_medium_pass --label medium_pass --n 200
@@ -31,9 +31,9 @@ from pathlib import Path
 # functions that need a GPU, so this module (and the test suite) can import
 # the extraction helpers without the heavy deps installed. math_common is
 # pure-stdlib, so importing it here keeps that property.
-from math_common import build_prompt, extract_gold, extract_pred, is_correct
+from math_common import MODEL_ID, build_prompt, extract_gold, extract_pred, is_correct
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-Math-1.5B-Instruct"  # see grpo_math.py: base model unusable zero-shot
+DEFAULT_MODEL = MODEL_ID  # single source of truth in math_common
 RESULTS_DIR = Path("results")
 
 

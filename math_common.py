@@ -12,6 +12,16 @@ suite and offline tooling can use these helpers GPU-free.
 
 import re
 
+# Single source of truth for the model id (imported by grpo/eval/signals so they
+# can never drift). General Qwen2.5-1.5B-Instruct, NOT the math-specialized one:
+#  - the non-Instruct base can't follow a zero-shot prompt (rambles, never boxes);
+#  - Qwen2.5-Math-1.5B-Instruct scores ~0.855 on GSM8K — too strong, leaves no
+#    headroom, so GRPO can't improve good cohorts AND corruption can't damage a
+#    confident model (reward never fires) => every cohort lands at ~0 lift (null).
+# The general 1.5B-Instruct (~0.55-0.70) leaves room for good cohorts to gain and
+# bad ones to stay flat — i.e. measurable, predictable lift variance.
+MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
+
 SYSTEM_PROMPT = (
     "You are a math tutor. Solve the problem step by step. "
     "Put your final numeric answer inside <answer>...</answer>."

@@ -15,9 +15,10 @@ exact numbers.
 - `r(V(y)) -> float` reward reducer
 
 ## Recommended recipe
-1. Pick a small open model + cheap benchmark (we picked **Qwen2.5-Math-1.5B-Instruct**
-   + **GSM8K**; the non-Instruct base couldn't follow the prompt zero-shot — see
-   NOTES.md 2026-06-20).
+1. Pick a small open model + cheap benchmark (we picked **Qwen2.5-1.5B-Instruct**
+   + **GSM8K**). The non-Instruct base couldn't follow the prompt zero-shot, and the
+   *math*-Instruct variant was too strong (~0.855 → no headroom → null lift); the
+   general 1.5B-Instruct leaves room for lift to vary. See NOTES.md 2026-06-20.
 2. Partition GSM8K into **cohorts** of equal size, varying one property
    (difficulty, length, topic, synthetic vs real, etc.).
 3. Run **GRPO** on each cohort with identical config — cohort is the only
