@@ -1,146 +1,136 @@
-# Which cheap signal predicts how much a model gains from GRPO?
+# Which Cheap Signal Predicts How Much a Model Gains from GRPO?
 
-> **Inference-Time Compute Hackathon — Applied AI track.**
-> Can a *training-free*, near-zero-cost metric tell you, **before** you spend a
-> single GPU-hour on RL, how much a dataset will actually improve your model?
+> [!NOTE]
+> **Inference-Time Compute Hackathon — Applied AI Track**
+>
+> Can a *training-free*, near-zero-cost metric tell us, **before** we spend a single GPU-hour on Reinforcement Learning (RL), how much a dataset will actually improve our model?
 
-We take one small model (`Qwen2.5-1.5B-Instruct`), build five GSM8K **cohorts**
-of deliberately varying quality, score each cohort with a basket of cheap
-signals, then actually run GRPO on every cohort and measure the real accuracy
-lift. The cohort is the *only* variable — everything else (config, eval set,
-seed) is held fixed — so any difference in lift is attributable to the data.
+We took a small generalist model (`Qwen2.5-1.5B-Instruct`), constructed five GSM8K **cohorts** of deliberately varying quality, scored each cohort with a basket of cheap signals, and then ran GRPO on every cohort to measure the real evaluation accuracy lift. By holding every other variable (hyperparameters, evaluation slice, seed) strictly constant, any difference in lift is directly attributable to the cohort's data.
 
 ![Signal vs lift](report/results.png)
 
-> **Left:** each cohort's cheapest training-free signal (`sampling_headroom`) vs the
-> GRPO lift we actually measured — a weak positive trend (r = +0.50), but every point's
-> error bar overlaps the grey eval-noise band. **Right:** every signal ranked by its
-> correlation with lift. The n=5 "winner" (`format_rate`, −0.96) has no mechanism behind
-> it — a textbook small-sample spurious correlation, which is why we read this chart with
-> caution rather than crowning a metric.
+> **Left:** Each cohort's cheapest training-free signal (`sampling_headroom`) plotted against the actual GRPO lift measured. While there is a weak positive trend ($r = +0.50$), each cohort's error bar overlaps the evaluation noise band. **Right:** All signals ranked by their Pearson correlation with lift. The $N=5$ "winner" (`format_rate`, $r = -0.96$) is a spurious small-sample correlation with no mechanistic backing, which underscores the importance of interpreting these rankings with caution.
 
 ---
 
-## TL;DR — the honest result
+## TL;DR — Summary of Results
 
-We got a **clean positive** and an **honest negative**, and the gap between them
-is the most interesting finding.
+We established a **clean positive** and an **honest negative** result. The gap between them constitutes our most actionable finding.
 
-| | Finding | Strength |
+| | Finding | Evidence & Strength |
 |---|---|---|
-| ✅ | **Cheap signals are near-perfect data-quality detectors.** `reward_mean` and `pass@1` from a handful of sampled rollouts separate good cohorts (0.40–0.73) from corrupt ones (~0.00) with **zero ambiguity** — at a tiny fraction of the cost of training. | Strong |
-| ⚠️ | **They do *not* reliably predict lift *magnitude*** in this run. With a single seed and n=200 eval, the spread in lift (0.025–0.065) is **smaller than the eval noise band** (±1 SE ≈ 0.048). | Inconclusive (underpowered) |
-| 💡 | **The "failed" anchors explain the mechanism.** Corrupt cohorts (`reward_mean ≈ 0`) didn't *hurt* the model — they did nothing. Zero reward ⇒ zero GRPO advantage ⇒ near-identity update ⇒ checkpoint ≈ base. So `reward_mean` predicts **whether learning happens at all**, even when it can't rank the winners. | Strong & mechanistic |
+| **✅ Positive** | **Cheap signals are near-perfect data-quality detectors.** `reward_mean` and `pass@1` from a handful of sampled rollouts separate good cohorts (0.40–0.73) from corrupt ones (~0.00) with **zero ambiguity** — at a tiny fraction of the cost of training. | **Strong** |
+| **⚠️ Negative** | **Signals do *not* reliably predict lift *magnitude*** in this regime. With a single seed and $N=200$ eval, the spread in lift (0.025–0.065) is **smaller than the evaluation noise band** ($\pm 1 \text{ SE} \approx 0.048$). | **Inconclusive** (underpowered) |
+| **💡 Insight** | **The "failed" anchors explain the mechanism.** Corrupt cohorts (`reward_mean` $\approx 0$) did not actively damage the model—they did nothing. Zero reward $\implies$ zero GRPO advantage $\implies$ near-identity gradients $\implies$ final model $\approx$ base model. Thus, `reward_mean` acts as a **go/no-go gate**, even if it cannot rank high-quality cohorts. | **Strong & Mechanistic** |
 
-The takeaway for a practitioner: **use the cheap reward signal as a go/no-go gate
-on a dataset, not as a fine-grained lift forecaster.** It will catch a poisoned
-or mismatched dataset for almost free; ranking two *good* datasets needs more eval
-budget than a hackathon affords.
+> [!TIP]
+> **Takeaway for Practitioners:** Use cheap reward signals as a **go/no-go gate** on a dataset rather than a fine-grained lift forecaster. It will successfully filter out poisoned or mismatched datasets for almost zero cost; ranking two high-quality datasets requires a significantly larger evaluation budget than is typical for rapid prototyping.
 
 ---
 
-## The question (and why it's hard)
+## Research Question & Motivation
 
-RL post-training (GRPO/PPO-style) is expensive and the payoff is uncertain. The
-brief asks: **what task- and dataset-level metrics correlate with post-RL gain,
-and where do they sit on the cost–quality frontier?** Judges care about the
-*rationale* more than the exact numbers.
+Reinforcement Learning post-training (GRPO/PPO-style) is computationally expensive, and its payoff is highly sensitive to training data. The primary objective is to investigate: **what task- and dataset-level metrics correlate with post-RL gain, and where do they sit on the cost–quality frontier?** 
 
-The trap is that the dependent variable — "lift" — is **noisy and small** for a
-1.5B model on a fixed eval slice. That makes the experimental design (headroom,
-size-matching, controls) matter more than any single metric.
+The primary challenge is that the dependent variable—accuracy "lift"—is **noisy and small** when evaluating a small model on a restricted evaluation slice. Therefore, experimental design (headroom selection, cohort controls, noise estimation) is critical to obtaining any scientifically valid conclusions.
 
 ---
 
-## Experimental design
+## Experimental Design
 
-### Model & benchmark — chosen for *headroom*, not strength
+### 1. Model & Benchmark Selection
+Choosing the right base model was a key preliminary result (see [NOTES.md](NOTES.md)):
 
-Picking the model was itself a result (see [NOTES.md](NOTES.md)):
-
-| Candidate | Base GSM8K | Verdict |
+| Base Model Candidate | Base GSM8K Acc. | Verdict / Rationale |
 |---|---|---|
-| `Qwen2.5-Math-1.5B` (base) | ~0.20 | ❌ Can't follow a zero-shot prompt — rambles past the answer, never boxes, no EOS. Flat reward curve. |
-| `Qwen2.5-Math-1.5B-Instruct` | **0.855** | ❌ **Null-result ceiling** — no headroom for good cohorts to gain, and it never emits the wrong gold so corrupt cohorts never fire the reward. Every cohort ≈ 0 lift. |
-| **`Qwen2.5-1.5B-Instruct`** (general) | **0.65** | ✅ Headroom in both directions — good cohorts *can* gain, the reward *can* fire on corruption. Lift has room to vary. |
+| `Qwen2.5-Math-1.5B` (base) | ~0.20 | ❌ **Failed to follow prompt:** Zero-shot prompts led to rambling responses that failed to use boxed formats or emit proper EOS tokens, yielding a flat reward curve. |
+| `Qwen2.5-Math-1.5B-Instruct` | 0.855 | ❌ **Null-result ceiling:** No headroom for high-quality cohorts to demonstrate lift, and it never emitted wrong answers on corrupt cohorts, meaning the verifier never fired. |
+| **`Qwen2.5-1.5B-Instruct`** (general) | **0.650** | ✅ **Sufficient headroom:** Clear headroom in both directions. High-quality cohorts can improve, and corrupted cohorts trigger incorrect verifications, causing lift to vary. |
 
-`MODEL_ID` is centralized in [`math_common.py`](math_common.py) so one edit
-re-points training, eval, and signals together.
+`MODEL_ID` is centralized in [`math_common.py`](math_common.py) so that modifying a single line re-points training, evaluation, and signal extraction.
 
-### Five cohorts — same size, deliberate quality spread
+### 2. Cohort Design
+Each cohort consists of **256 tasks** sharing a single schema. Only the data source and quality vary, with degraded and control cohorts serving to anchor the low-lift range.
 
-Each cohort is **256 tasks** sharing one schema; only the data source/quality
-changes. Degraded + control cohorts are designed to *anchor the low-lift end*.
-
-| Cohort | Source | Intended quality |
+| Cohort | Source | Description / Intended Quality |
 |---|---|---|
-| `benchmark_slice` | GSM8K train, random sample | High, in-distribution |
-| `harder_sibling` | Top-30% hardest GSM8K by step count | Medium-high, harder |
-| `synthetic_good` | Orca-Math word problems | Variable synthetic |
-| `synthetic_degraded` | GSM8K with **wrong** answers injected | Low (bad supervision) |
-| `random_control` | GSM8K with Q/A **mismatched** | Near-zero (control) |
-| `eval_slice` *(held out)* | GSM8K **test**, fixed seed | Frozen eval set for every run |
+| `benchmark_slice` | GSM8K train | High-quality, in-distribution random sample. |
+| `harder_sibling` | GSM8K train | Medium-high quality; top 30% hardest tasks by reasoning step count. |
+| `synthetic_good` | Orca-Math | Variable-quality synthetic word problems. |
+| `synthetic_degraded` | GSM8K train | Low quality; math problems with **wrong** answers injected. |
+| `random_control` | GSM8K train | Near-zero quality; math problems with **mismatched** questions and answers. |
+| `eval_slice` *(Held Out)* | GSM8K test | Frozen, deterministic evaluation set used for all runs. |
 
-Built by [`slice_cohorts_math.py`](slice_cohorts_math.py); corruptions by
-[`make_synthetic_math.py`](make_synthetic_math.py).
+Cohorts were generated using [`slice_cohorts_math.py`](slice_cohorts_math.py), and synthetic corruptions were introduced via [`make_synthetic_math.py`](make_synthetic_math.py).
 
-### Pipeline
+### 3. Experimental Pipeline
 
+```mermaid
+graph TD
+    subgraph Phase 0: Cohort Construction
+        A[GSM8K / Orca-Math] -->|slice_cohorts_math.py| B[cohorts/*.jsonl]
+    end
+    subgraph Phase 1: Signal Extraction
+        B -->|extract_signals_math.py| C[results/math_signals.jsonl]
+    end
+    subgraph Phase 2: GRPO Training & Eval
+        B -->|grpo_math.py| D[outputs/math_*_seed0]
+        D -->|eval_math.py| E[results/math_eval.jsonl]
+    end
+    subgraph Phase 3: Synthesis & Plotting
+        C & E -->|analyze.py| F[results/math_joined.jsonl]
+        F -->|analyze.py| G[report/results.png]
+    end
+
+    style A fill:#f9f9f9,stroke:#333,stroke-width:1px
+    style B fill:#e1f5fe,stroke:#0288d1,stroke-width:1px
+    style C fill:#fff9c4,stroke:#fbc02d,stroke-width:1px
+    style D fill:#e8f5e9,stroke:#388e3c,stroke-width:1px
+    style E fill:#ffe0b2,stroke:#f57c00,stroke-width:1px
+    style F fill:#e1f5fe,stroke:#0288d1,stroke-width:1px
+    style G fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 ```
-Phase 0  build cohorts            slice_cohorts_math.py   → cohorts/*.jsonl
-Phase 1  score signals (GPU)      extract_signals_math.py → results/math_signals.jsonl
-Phase 2  GRPO each cohort (GPU)   grpo_math.py  + eval_math.py → results/math_eval.jsonl
-Phase 3  join & analyze (CPU)     analyze.py → results/math_joined.jsonl + report/results.png
-```
 
-GRPO config is **identical** across cohorts (constant LR 2e-6, 250 steps, 4
-generations/prompt, seed 0). Driver: [`run_phase2.sh`](run_phase2.sh)
-(fail-fast: base → one cohort → signals → the rest).
+GRPO configurations were identical across all cohorts (LR $2 \times 10^{-6}$, 250 steps, 4 generations per prompt, seed 0). The pipeline driver [`run_phase2.sh`](run_phase2.sh) automates cohort generation, signal scoring, training, and evaluation.
 
 ---
 
-## The signals
+## Cheap Predictor Signals
 
-All are computed from a small batch of sampled rollouts per task and aggregated
-per cohort. Costs are *relative* — the point is they're all far cheaper than a
-GRPO run.
+All signals are computed from a small batch of sampled rollouts per task and aggregated at the cohort level. The computational cost of these metrics is negligible compared to a full GRPO run.
 
-| Signal | What it measures | Cost |
+| Signal | What it Measures | Cost |
 |---|---|---|
-| `reward_mean` | Mean verifier reward over rollouts (≈ pass rate) | ~free (reuses rollouts) |
-| `reward_var` | Variance of reward — proxy for *learnability* / intermediate difficulty | ~free |
-| `pass@1` | Greedy correctness | low |
-| `pass@N` | Any-of-N correctness | low |
-| `sampling_headroom` | pass@N − pass@1 — gap RL could close | low |
-| `self_consistency_gap` | Majority-vote vs greedy agreement | low |
-| `ppl_mean` | Prompt perplexity under the model | medium |
-| `format_rate` | Fraction emitting a parseable boxed answer | ~free |
-| `intermediate_frac` | Fraction of tasks with pass-rate near 0.5 | ~free |
+| `reward_mean` | Mean verifier reward over rollouts (≈ pass rate) | Near-zero (reuses rollouts) |
+| `reward_var` | Variance of reward (proxy for learnability/difficulty) | Near-zero (reuses rollouts) |
+| `pass@1` | Greedy correctness rate | Low |
+| `pass@N` | Any-of-N correctness rate | Low |
+| `sampling_headroom` | $pass@N - pass@1$ (potential RL optimization margin) | Low |
+| `self_consistency_gap` | Agreement rate between majority-vote and greedy decoding | Low |
+| `ppl_mean` | Average prompt perplexity under the model | Medium |
+| `format_rate` | Fraction of responses emitting a parseable `\boxed{}` answer | Near-zero |
+| `intermediate_frac` | Fraction of tasks with a pass rate near 0.5 | Near-zero |
 
-Defined domain-agnostically in [`signals.py`](signals.py) — the same definitions
-are intended to port to the code track, which is what makes a cross-domain
-comparison valid.
+These signals are defined domain-agnostically in [`signals.py`](signals.py), ensuring they can be ported to other tracks (e.g., code generation) for cross-domain validation.
 
 ---
 
-## Results
+## Detailed Results
 
-### Per-cohort numbers
+### 1. Per-Cohort Metrics
+*Base Model Accuracy:* **0.650** ($N=200$). Single seed. Evaluation $\text{SE} \approx 0.034$ per point, yielding a Standard Error on the lift (difference of two independent proportions) of $\approx \mathbf{0.048}$.
 
-Base accuracy **0.650** (n=200). Single seed. Eval SE ≈ 0.034 per point, so the
-SE on a *lift* (difference of two proportions) is ≈ **0.048**.
-
-| Cohort | acc after | **lift** | reward_mean | pass@1 | pass@N | ppl |
+| Cohort | Eval Acc | **Lift** | `reward_mean` | `pass@1` | `pass@N` | Prompt `ppl` |
 |---|---|---|---|---|---|---|
 | `synthetic_good` | 0.715 | **+0.065** | 0.402 | 0.379 | 0.688 | 15.5 |
-| `benchmark_slice` | 0.685 | +0.035 | 0.724 | 0.731 | 0.941 | 12.6 |
-| `random_control` | 0.685 | +0.035 | **0.002** | 0.000 | 0.008 | 12.2 |
-| `harder_sibling` | 0.680 | +0.030 | 0.530 | 0.559 | 0.887 | 8.6 |
-| `synthetic_degraded` | 0.675 | +0.025 | **0.007** | 0.008 | 0.023 | 12.8 |
+| `benchmark_slice` | 0.685 | **+0.035** | 0.724 | 0.731 | 0.941 | 12.6 |
+| `random_control` | 0.685 | **+0.035** | 0.002 | 0.000 | 0.008 | 12.2 |
+| `harder_sibling` | 0.680 | **+0.030** | 0.530 | 0.559 | 0.887 | 8.6 |
+| `synthetic_degraded` | 0.675 | **+0.025** | 0.007 | 0.008 | 0.023 | 12.8 |
 
-### Signal → lift correlation (n = 5 cohorts)
+### 2. Signal-to-Lift Correlation ($N=5$ Cohorts)
 
-| Signal | Pearson r vs lift |
+| Signal | Pearson Correlation ($r$) vs. Lift |
 |---|---|
 | `ppl_mean` | +0.71 |
 | `sampling_headroom_mean` | +0.50 |
@@ -148,104 +138,77 @@ SE on a *lift* (difference of two proportions) is ≈ **0.048**.
 | `reward_mean_mean` | +0.22 |
 | `pass_at_1_mean` | +0.17 |
 
-⚠️ **Read these with a grain of salt: n = 5.** No correlation here is
-statistically meaningful, and the lift spread is inside the noise band. We report
-them for transparency, not as a ranking we'd defend.
+> [!WARNING]
+> **Spurious Correlation & Small Sample Size Warning**
+>
+> With only $N=5$ cohorts, no individual correlation is statistically significant, and the entire range of observed lifts falls within the evaluation noise band. While `format_rate` mathematically shows a high negative correlation ($r = -0.96$), there is no causal mechanism behind it. We report these correlations for completeness, not as a robust ranking of predictor strength.
 
 ---
 
-## Key insights
+## Key Insights
 
-1. **Design beats metrics.** The single biggest lever on getting *any* usable
-   signal was model choice (headroom), not which cheap metric we computed. Two of
-   our three model candidates produced a guaranteed null result before a metric
-   was ever measured.
-
-2. **Cheap signals nail data *quality*, not lift *magnitude*.** `reward_mean`
-   splits good (0.40–0.73) from corrupt (≈0.00) cohorts with no overlap. That's a
-   genuinely useful, almost-free dataset gate — it would have caught the poisoned
-   and mismatched datasets instantly.
-
-3. **Why corrupt data didn't hurt — the mechanism.** GRPO's update is driven by
-   *advantage* (reward relative to the group). When every rollout for a corrupt
-   task scores ~0, the advantage is ~0, the gradient is ~0, and the checkpoint
-   stays ≈ base. So control/degraded cohorts landed at *base ± noise* rather than
-   below it. This is why `reward_mean` is best understood as a **go/no-go gate**
-   ("will this data move the model at all?") rather than a lift dial.
-
-4. **The experiment is underpowered, and we say so.** Lift differences of 0.01–0.04
-   on a single n=200 seed are not resolvable. The honest scientific output is:
-   *the predictor side is strong; the dependent-variable side needs more budget.*
+1. **Experimental Design > Metrics:** The most critical lever in obtaining a meaningful signal was base model selection. Selecting a model with sufficient headroom (avoiding the performance floor/ceiling) was far more important than the specific choice of cheap metric.
+2. **Quality vs. Magnitude:** Cheap rollouts successfully detect dataset quality (separating clean cohorts from corrupted ones with zero overlap), but they cannot rank the performance of clean datasets when the evaluation is underpowered.
+3. **The GRPO Gradient Attenuation Mechanism:** Why did corrupted/mismatched data not degrade the model below the base baseline? GRPO updates are driven by group relative advantage. When all generated rollouts for a task receive zero reward, the advantage scores are zero, generating near-zero gradients. Thus, corrupted data results in an identity update (checkpoint $\approx$ base) rather than active harm.
+4. **Transparency in Reporting:** Lift differences of 1–4% on a single $N=200$ seed are not statistically resolvable. We explicitly highlight that while our predictor extraction is robust, resolving fine-grained dataset quality requires scaling the evaluation budget.
 
 ---
 
-## What I'd do next (and what to do with the checkpoints)
+## Future Directions & Next Steps
 
-The bottleneck is **eval noise on the dependent variable**, not the signals. In
-priority order, with the GPU still up:
+The primary constraint in this study is the **evaluation noise of the dependent variable (accuracy lift)**. To build a more robust predictive model, future work should prioritize:
 
-1. **Cheapest, highest value — re-eval existing checkpoints at larger n.** The
-   trained checkpoints already exist; only inference is needed. Re-running each at
-   `--n 500` (or the full 256-task `eval_slice` plus the test split) roughly halves
-   the lift SE and is the single fastest way to tell whether `synthetic_good`'s
-   +0.065 is real. No retraining.
-2. **Add seeds 1 and 2 to training** and average the lifts — directly attacks
-   run-to-run variance. More expensive (full GRPO runs), do only if budget allows.
-3. **Preserve the checkpoints before killing the box.** Push the five
-   `outputs/math_<cohort>_seed0` dirs to the HF Hub (or download them) so the
-   re-eval in (1) can happen later without re-training. They're the expensive
-   artifact in this whole project.
-4. **Port `signals.py` to the code track** for the cross-domain validation the
-   shared schema was built for.
-
-> 💡 **Before you `stop` the instance:** if you can spare ~10–20 min of GPU,
-> run step 1 (re-eval at higher n) and push the updated `results/math_eval.jsonl`.
-> If not, at minimum do step 3 so the checkpoints survive. Everything in Phase 3
-> is offline and already in this repo.
+1. **Expanding Evaluation Sample Size ($N$):** Evaluating the checkpoints with a higher sample size (e.g., $N=500$ or the full GSM8K test split) to halve the evaluation Standard Error and confirm if the $+0.065$ lift of `synthetic_good` is statistically significant.
+2. **Multi-Seed Runs:** Running GRPO across multiple random seeds and averaging their post-RL accuracy lifts to isolate algorithmic improvement from run-to-run variance.
+3. **Model Checkpoint Hub:** Uploading the trained cohort checkpoints (`outputs/math_<cohort>_seed0`) to a shared model hub (e.g., Hugging Face) to enable scaled offline evaluations without redundant GPU re-training.
+4. **Cross-Domain Portability:** Testing the domain-agnostic predictors in [`signals.py`](signals.py) on code generation tasks to assess their predictive power across diverse modalities.
 
 ---
 
-## Reproduce
+## Replication Guide
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
 
-# Phase 0 — build cohorts (CPU)
+# Phase 0 — Build Cohorts (CPU)
 python slice_cohorts_math.py
 
-# Phase 1 — signals (GPU)
+# Phase 1 — Signal Scoring (GPU)
 python extract_signals_math.py
 
-# Phase 2 — train + eval each cohort (GPU, in tmux)
+# Phase 2 — GRPO Training & Evaluation (GPU)
+# Baseline Eval:
 python eval_math.py --model Qwen/Qwen2.5-1.5B-Instruct --label base --n 200
+
+# Train and Eval Cohorts:
 for C in benchmark_slice harder_sibling synthetic_good synthetic_degraded random_control; do
   python grpo_math.py --cohort $C --max_steps 250 --seed 0
   python eval_math.py --model outputs/math_${C}_seed0 --label $C --n 200
 done
 
-# Phase 3 — join + figure (CPU, offline)
+# Phase 3 — Synthesis & Rendering (CPU, Offline)
 python analyze.py
 ```
 
-## Repo layout
-
-| Path | Role |
-|---|---|
-| [`math_common.py`](math_common.py) | Central `MODEL_ID`, prompt, answer extraction |
-| [`slice_cohorts_math.py`](slice_cohorts_math.py) | Phase 0 — build cohorts |
-| [`make_synthetic_math.py`](make_synthetic_math.py) | Corruption helpers (wrong / mismatched) |
-| [`signals.py`](signals.py) | Domain-agnostic signal definitions (shared contract) |
-| [`extract_signals_math.py`](extract_signals_math.py) | Phase 1 — compute signals (GPU) |
-| [`grpo_math.py`](grpo_math.py) | Phase 2 — GRPO training |
-| [`eval_math.py`](eval_math.py) | Greedy-accuracy eval |
-| [`analyze.py`](analyze.py) | Phase 3 — join signals×lift, render `report/results.png` |
-| `cohorts/` | Cohort data + per-task signals |
-| `results/` | `math_signals.jsonl`, `math_eval.jsonl`, `math_joined.jsonl` |
-| `report/` | `results.png` + standalone `index.html` |
-| [`PROBLEM.md`](PROBLEM.md) · [`GAMEPLAN.md`](GAMEPLAN.md) · [`NOTES.md`](NOTES.md) | Brief, strategy, lab notebook |
-
 ---
 
-*Single 1.5B model, 5 cohorts × 256 tasks, GRPO @ 250 steps, n=200 eval, one seed.
-Run on a Prime Intellect A100. The numbers are small and we are upfront about their
-error bars — the contribution is the design and the mechanism, not a leaderboard.*
+## Repository Structure
+
+| Path | Description |
+|---|---|
+| [`math_common.py`](math_common.py) | Centralized configurations (e.g., `MODEL_ID`), prompt templates, and extraction helpers. |
+| [`slice_cohorts_math.py`](slice_cohorts_math.py) | Phase 0 — Construction of the five training cohorts. |
+| [`make_synthetic_math.py`](make_synthetic_math.py) | Helpers for injecting wrong answers and mismatched question-answer pairs. |
+| [`signals.py`](signals.py) | Domain-agnostic definition of predictor metrics (shared contract). |
+| [`extract_signals_math.py`](extract_signals_math.py) | Phase 1 — Computing predictor signals for each cohort. |
+| [`grpo_math.py`](grpo_math.py) | Phase 2 — GRPO training loop. |
+| [`eval_math.py`](eval_math.py) | Phase 2 — Greedy deterministic accuracy evaluation. |
+| [`analyze.py`](analyze.py) | Phase 3 — Synthesis of signals and lift, rendering `report/results.png`. |
+| `cohorts/` | Directory containing generated cohort JSONL files and their raw signal scores. |
+| `results/` | Output directory containing `math_signals.jsonl`, `math_eval.jsonl`, and `math_joined.jsonl`. |
+| `report/` | Output directory for `results.png` and the interactive `index.html` dashboard. |
+| [`PROBLEM.md`](PROBLEM.md) · [`GAMEPLAN.md`](GAMEPLAN.md) · [`NOTES.md`](NOTES.md) | The hackathon prompt, implementation roadmap, and developer lab notebook. |
+
+---
+*Results are based on a single seed run of Qwen2.5-1.5B-Instruct on 5 cohorts of 256 tasks each, trained via GRPO for 250 steps, and evaluated on a deterministic 200-task test slice on a Prime Intellect A100 instance. We emphasize physical mechanism design and transparency over leaderboard metrics.*
