@@ -1,0 +1,21 @@
+# Training outputs / checkpoints (huge — never commit)
+outputs/
+*.safetensors
+*.bin
+*.pt
+checkpoint-*/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+env/
+
+# HF / datasets cache
+.cache/
+wandb/
+
+# Local scratch — but DO commit results/ summaries
+*.log
+.DS_Store
