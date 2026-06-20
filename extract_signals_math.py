@@ -45,24 +45,40 @@ COHORT_DIR = Path("cohorts")
 
 N_ROLLOUTS = 5
 ROLLOUT_TEMP = 0.9
-MAX_NEW_TOKENS = 1024   # Qwen-Math CoT is long; 512 truncated every rollout
+MAX_NEW_TOKENS = 512    # answers appear in the first ~200 tokens; 512 is safe headroom
 
 # Scoring helpers (extract_pred / is_correct / has_format / build_prompt) are
 # imported from math_common — same code path as eval + training.
 
 
 @torch.no_grad()
-def prompt_perplexity(prompt_ids: torch.Tensor, model, tokenizer) -> float:
-    """NLL-per-token of the prompt under the model (no generation)."""
-    ids = prompt_ids.unsqueeze(0).to(model.device)
-    mask = (ids != tokenizer.pad_token_id).long()
-    labels = ids.clone()
-    out = model(input_ids=ids, attention_mask=mask, labels=labels)
-    return math.exp(out.loss.item())
+def batch_perplexity(prompts: list[str], model, tokenizer) -> list[float]:
+    """Per-sequence NLL under the model for a batch of prompt strings.
+
+    Pads left (matching generation padding_side) so all sequences end at the
+    same position. Uses per-token loss masking so padding doesn't inflate ppl.
+    """
+    enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+    input_ids = enc.input_ids
+    attention_mask = enc.attention_mask
+
+    labels = input_ids.clone()
+    labels[attention_mask == 0] = -100   # ignore padding in loss
+
+    out = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+    # out.loss is the mean over all non-masked tokens in the batch — we need
+    # per-sequence NLL, so re-compute with reduction="none" via log-softmax.
+    logits = out.logits[:, :-1].float()           # (B, L-1, V)
+    tgt    = labels[:, 1:].clone()                # (B, L-1)
+    mask   = (tgt != -100)
+    log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+    nll = -log_probs.gather(2, tgt.clamp(min=0).unsqueeze(2)).squeeze(2)  # (B, L-1)
+    per_seq_nll = (nll * mask).sum(1) / mask.sum(1).clamp(min=1)
+    return [math.exp(v.item()) for v in per_seq_nll]
 
 
 @torch.no_grad()
-def rollout_signals_batch(rows: list, model, tokenizer) -> list:
+def rollout_signals_batch(rows: list, model, tokenizer, prompts: list[str]) -> list:
     """Generate N_ROLLOUTS completions for a *batch* of tasks in one call.
 
     With batch=1 the A100 sits idle (decode is latency-bound), so we pack many
@@ -71,7 +87,6 @@ def rollout_signals_batch(rows: list, model, tokenizer) -> list:
     Output ordering is batch-major: prompt0's N returns, then prompt1's, ...
     -> reshape to (B, N, gen_len).
     """
-    prompts = [build_prompt(r["question"], tokenizer) for r in rows]
     enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
     prompt_len = enc.input_ids.shape[1]
 
@@ -85,17 +100,27 @@ def rollout_signals_batch(rows: list, model, tokenizer) -> list:
     )
     gen = outputs[:, prompt_len:].view(len(rows), N_ROLLOUTS, -1)
 
+    # Batch-decode all (B * N) sequences at once — eliminates the per-token
+    # Python loop overhead of calling decode() B*N times individually.
+    B, N, L = gen.shape
+    flat = gen.reshape(B * N, L)
+    # Replace pad tokens with 0 before decode so skip_special_tokens works cleanly.
+    flat_clean = flat.clone()
+    flat_clean[flat_clean == tokenizer.pad_token_id] = tokenizer.eos_token_id
+    texts = tokenizer.batch_decode(flat_clean, skip_special_tokens=True)  # list[B*N]
+    # Compute actual lengths (tokens before first pad) for each sequence.
+    pad_mask = (flat != tokenizer.pad_token_id)
+    raw_lengths = pad_mask.sum(dim=1).tolist()   # list[B*N]
+
     out = []
     for i, row in enumerate(rows):
         rewards, fmt_hits, lengths = [], 0, []
         for n in range(N_ROLLOUTS):
-            seq = gen[i, n]
-            real = seq[seq != tokenizer.pad_token_id]   # strip right-pad on finished seqs
-            text = tokenizer.decode(real, skip_special_tokens=True)
+            text = texts[i * N_ROLLOUTS + n]
             pred = extract_pred(text)
             rewards.append(1.0 if is_correct(pred, row["gold"]) else 0.0)
             fmt_hits += int(has_format(text))
-            lengths.append(int(real.numel()))
+            lengths.append(raw_lengths[i * N_ROLLOUTS + n])
 
         mean_r   = sum(rewards) / len(rewards)
         var_r    = sum((r - mean_r) ** 2 for r in rewards) / len(rewards)
@@ -132,16 +157,9 @@ def process_cohort(path: Path, model, tokenizer, max_tasks: int | None, batch_si
     for start in range(0, len(rows), batch_size):
         batch = rows[start:start + batch_size]
 
-        # perplexity is a single cheap forward per task — keep it per-row so the
-        # loss-masking stays trivially correct; generation is what we batch.
-        ppls = []
-        for row in batch:
-            prompt_ids = tokenizer(
-                build_prompt(row["question"], tokenizer), return_tensors="pt"
-            ).input_ids[0]
-            ppls.append(prompt_perplexity(prompt_ids, model, tokenizer))
-
-        sigs = rollout_signals_batch(batch, model, tokenizer)
+        prompts = [build_prompt(row["question"], tokenizer) for row in batch]
+        ppls = batch_perplexity(prompts, model, tokenizer)
+        sigs = rollout_signals_batch(batch, model, tokenizer, prompts)
 
         for row, ppl, sig in zip(batch, ppls, sigs):
             results.append({**row, "signals": {"prompt_ppl": round(ppl, 4), **sig}})
