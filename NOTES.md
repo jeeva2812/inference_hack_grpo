@@ -6,24 +6,33 @@
   ran end-to-end on Prime Intellect H100. Loss/reward print, no OOM. 50 steps
   is too few for real lift (clip_ratio stayed 0) — that's expected.
 - `slice_cohorts.py` — generated 5 cohorts (256 tasks each) in `cohorts/`.
+  NOTE: this is the OLD (steps × qlen) cut. Game plan now wants source-diverse
+  cohorts (benchmark slice / sibling dataset / synthetic / control) — to redo.
 - `extract_signals.py` — perplexity + N-rollout reward stats per task, with
-  pad-token fix and attention-mask passthrough. Currently running.
+  pad-token fix and attention-mask passthrough. Ran on cohorts.
+- `signals.py` — **shared, domain-agnostic signal module.** Pure functions on
+  primitives (no GPU), imported by BOTH math and code tracks so a signal means
+  the same thing in each. Implements baselines + both hero candidates
+  (`sampling_headroom`, `gradient_coherence` + sketched variant) + your
+  `benchmark_coverage` idea. `python signals.py` runs an offline fake-data
+  demo — verified headroom peaks at medium difficulty as theorized.
 - `PROBLEM.md` — restatement of the brief and our adapted plan.
-- `GAMEPLAN.md` — strategy doc. **Read this first.**
+- `GAMEPLAN.md` — strategy doc. **Read this first.** Rewritten: phase flow,
+  source-diverse cohorts, metric bake-off, two-lane parallel schedule.
+- `DASHBOARD.md` / `PRIME_INTELLECT.md` — demo spec + GPU runbook.
 
 ## Next (in order)
-1. Let `extract_signals.py` finish all 5 cohorts → `summary.jsonl`.
-2. **Eval harness** — fixed GSM8K test slice, greedy decoding, returns
-   accuracy. Will be called before and after each cohort run.
-3. **Re-cohort by pass-rate** using the signal output: easy / medium / hard /
-   mixed buckets. Replaces the current `(steps × qlen)` cut for the main
-   experiment (we keep the original as a secondary axis).
-4. **5 GRPO training runs**, 200 steps each, `num_generations=8`,
-   identical config across cohorts. Save checkpoints.
-5. Eval all 5 checkpoints + base = 6 accuracy numbers → 5 lifts.
-6. Compute extras: gold-trajectory surprise, self-consistency gap.
-7. Regression: metric → lift, leave-one-out. Spearman ρ, not R².
-8. Pareto plot: (compute-cost, ρ) per metric.
+1. **Eval harness** — fixed benchmark test slice, greedy decoding, returns
+   accuracy. Called before & after each cohort run. (Offline-buildable.)
+2. **Rebuild cohorts** as source-diverse, size-matched (see GAMEPLAN
+   "Training data vs. eval benchmark"): benchmark_slice / harder_sibling /
+   synthetic_good / synthetic_degraded / random_control.
+3. **Wire `extract_signals.py` to emit `signals.py` primitives** (`Task`
+   objects) + add optional embedder & gradient hook for tiers 2.5 / 3.
+4. **GRPO run per cohort**, 200–300 steps, `num_generations=8`, identical
+   config. Seed-repeat if budget allows. Save → eval → `lift`.
+5. Regression: metric → lift, leave-one-out, Spearman ρ (not R²).
+6. Dashboard: predicted-vs-actual scatter + cost-vs-ρ Pareto plot.
 
 ## Open questions / risks
 - vLLM + GRPO on a single small GPU — might have to disable `use_vllm`
@@ -33,6 +42,12 @@
 - 50 steps showed clip_ratio=0 → model barely moved. For real cohort runs
   bump to 200–300 steps and `num_generations=8`.
 - With only 5 cohorts, R² is meaningless — report Spearman LOO instead.
+- `benchmark_coverage` is both a candidate metric AND a confound control:
+  source-diverse cohorts vary in distribution-match to the eval set, so we
+  must regress lift on headroom *while controlling for* coverage.
+- `gradient_coherence` needs a backward pass per task — heavier than the
+  rollout-reuse signals. Use the sketched variant to keep it cheap; build it
+  last (sharp-but-safe: baselines + headroom ship first).
 
 ## VS Code + SSH + Claude Code (your sidebar question)
 - Install the **Remote - SSH** extension in VS Code.
