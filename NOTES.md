@@ -20,6 +20,15 @@
 - `GAMEPLAN.md` — strategy doc. **Read this first.** Rewritten: phase flow,
   source-diverse cohorts, metric bake-off, two-lane parallel schedule.
 - `DASHBOARD.md` / `PRIME_INTELLECT.md` — demo spec + GPU runbook.
+- `make_synthetic.py` — programmatic GSM8K corruption (wrong_answer /
+  shuffled_steps / mismatched / trivial). ZERO tokens — builds the degraded /
+  control cohorts without Claude.
+- `plots.py` — the two deliverable figures (predicted-vs-actual scatter +
+  cost-vs-ρ Pareto), numpy-only stats, runs offline on fake data. Verified.
+- `test_pipeline.py` — 10 offline sanity checks (no GPU). `python
+  test_pipeline.py` → 10/10. Run after editing signals/synthetic/plots.
+- `grpo_baseline.py` — now W&B-aware via env vars (REPORT_TO / WANDB_PROJECT /
+  RUN_NAME), defaults to terminal-only so it never breaks.
 
 ## Next (in order)
 1. **Eval harness** — fixed benchmark test slice, greedy decoding, returns

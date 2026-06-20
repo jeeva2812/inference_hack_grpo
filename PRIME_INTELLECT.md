@@ -20,7 +20,26 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 # vLLM is heavy; if it stalls the install, comment it out and use HF generate.
 huggingface-cli login        # paste a token -> avoids the rate-limit warning
+wandb login                  # paste API key from wandb.ai/authorize (see below)
 ```
+
+## Experiment tracking with Weights & Biases
+The box is ephemeral, so don't rely on terminal scrollback. W&B streams every
+training metric to a cloud dashboard that survives the box dying and lets both
+teammates watch the same runs (from a phone, even).
+
+One-time, on the box:
+```bash
+wandb login                              # paste your API key
+```
+Then enable it per run via env vars (no code edits — see grpo_baseline.py):
+```bash
+export REPORT_TO=wandb
+export WANDB_PROJECT=grpo-cohorts
+export RUN_NAME=math_medium_pass         # change per cohort so runs are labelled
+python grpo_baseline.py
+```
+Leaving `REPORT_TO` unset = terminal-only (safe default, never breaks).
 
 ## Never lose a long run — use tmux
 The cardinal rule: **never run training in a raw SSH shell.** If your laptop

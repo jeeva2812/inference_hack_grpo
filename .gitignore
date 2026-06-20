@@ -16,6 +16,9 @@ env/
 .cache/
 wandb/
 
-# Local scratch — but DO commit results/ summaries
+# Generated figures (regenerable from results/ via plots.py)
+report/
+
+# Local scratch — but DO commit results/ summaries and cohorts/
 *.log
 .DS_Store

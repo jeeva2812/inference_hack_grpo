@@ -1,7 +1,15 @@
 """
 GRPO baseline: Qwen2.5-Math-1.5B on GSM8K (50 steps smoke test).
+
+Experiment tracking: set env vars to stream metrics to Weights & Biases
+(survives the box dying, lets the team watch from one dashboard):
+    export REPORT_TO=wandb
+    export WANDB_PROJECT=grpo-cohorts
+    export RUN_NAME=math_medium_pass     # set per cohort run
+Defaults to "none" (terminal only) so it never breaks if W&B isn't set up.
 """
 
+import os
 import re
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -9,6 +17,10 @@ import torch
 from trl import GRPOConfig, GRPOTrainer
 
 MODEL_ID = "Qwen/Qwen2.5-Math-1.5B"
+
+# Tracking backend: "none" (default) or "wandb". Overridable without code edits.
+REPORT_TO = os.environ.get("REPORT_TO", "none")
+RUN_NAME = os.environ.get("RUN_NAME", "qwen25-math-1_5b-grpo-smoke")
 
 SYSTEM_PROMPT = (
     "You are a math tutor. Solve the problem step by step. "
@@ -83,7 +95,8 @@ def main():
     train_ds = build_dataset()
 
     config = GRPOConfig(
-        output_dir="outputs/qwen25-math-1_5b-grpo-smoke",
+        output_dir=f"outputs/{RUN_NAME}",
+        run_name=RUN_NAME,
         learning_rate=1e-6,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
@@ -94,7 +107,7 @@ def main():
         save_steps=50,
         bf16=True,
         gradient_checkpointing=True,
-        report_to="none",
+        report_to=REPORT_TO,    # "none" or "wandb" via env var
         # vLLM rollout (toggle off if it fails on your node)
         use_vllm=False,
     )
