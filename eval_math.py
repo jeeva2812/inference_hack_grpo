@@ -120,7 +120,7 @@ def main():
     ap.add_argument("--split", default="test")
     ap.add_argument("--n", type=int, default=200, help="fixed test-slice size")
     ap.add_argument("--batch_size", type=int, default=16)
-    ap.add_argument("--max_new_tokens", type=int, default=512)
+    ap.add_argument("--max_new_tokens", type=int, default=1024)  # match signals; 512 truncates Qwen-Math CoT
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 

@@ -38,7 +38,7 @@ COHORT_DIR = Path("cohorts")
 
 N_ROLLOUTS = 5
 ROLLOUT_TEMP = 0.9
-MAX_NEW_TOKENS = 512
+MAX_NEW_TOKENS = 1024   # Qwen-Math CoT is long; 512 truncated every rollout
 
 SYSTEM_PROMPT = (
     "You are a math tutor. Solve the problem step by step. "
