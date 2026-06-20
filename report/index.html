@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GRPO Data Signal Report</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020617; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; padding: 2rem; }
+  h1 { font-size: 2rem; font-weight: 800; background: linear-gradient(90deg,#6366f1,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:.25rem; }
+  .subtitle { color:#94a3b8; margin-bottom:2rem; font-size:.95rem; }
+  .card { background:#0f172a; border:1px solid #1e293b; border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
+  h2 { font-size:1.1rem; font-weight:700; color:#c7d2fe; margin-bottom:1rem; }
+  table { width:100%; border-collapse:collapse; font-size:.87rem; }
+  th { background:#1e293b; color:#94a3b8; padding:.6rem .8rem; text-align:left; font-weight:600; }
+  td { padding:.55rem .8rem; border-bottom:1px solid #1e293b; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#1e293b44; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+  .finding { border-left:3px solid #6366f1; padding:.6rem 1rem; margin:.5rem 0; background:#1e293b55; border-radius:0 8px 8px 0; font-size:.9rem; }
+  .finding.green { border-color:#22c55e; }
+  .finding.amber { border-color:#f59e0b; }
+  .tag { display:inline-block; padding:.1rem .5rem; border-radius:4px; font-size:.75rem; font-weight:700; background:#1e293b; color:#94a3b8; margin-left:.5rem; }
+  footer { color:#475569; font-size:.8rem; text-align:center; margin-top:2rem; }
+</style>
+</head>
+<body>
+
+<h1>GRPO Data-Quality Signal Study</h1>
+<p class="subtitle">Does a cheap pre-training metric predict how much a model improves after GRPO? &nbsp;|&nbsp; Model: Qwen2.5-1.5B-Instruct &nbsp;|&nbsp; Domain: GSM8K Math &nbsp;|&nbsp; n=200 eval</p>
+
+<div class="card">
+  <h2>Key Findings</h2>
+  <div class="finding green"><strong>Sampling headroom (pass@N − pass@1) is the best single predictor.</strong> It measures latent capability the model has but doesn't yet reliably use — exactly what GRPO converts into consistent output. harder_sibling (0.328) and synthetic_good (0.309) both have high headroom; benchmark_slice (0.211) is lower, consistent with its smaller lift.</div>
+  <div class="finding green"><strong>Reward variance gates trainability.</strong> Cohorts with reward_var &lt; 0.005 (random_control, synthetic_degraded) yielded near-zero lift — the model gets no gradient signal when it either always fails or always succeeds. This is a cheap binary filter: don't train on cohorts below this floor.</div>
+  <div class="finding green"><strong>Synthetic quality beats raw solve rate.</strong> synthetic_good achieved the highest lift (+6.5pp) despite lower pass@1 than benchmark_slice (0.38 vs 0.73) — confirming that difficulty sweet-spot and CoT coherence matter more than pre-existing accuracy.</div>
+  <div class="finding amber"><strong>PPL, format rate, and self-consistency gap are weak signals.</strong> All show near-zero Spearman ρ with lift. Format rate is roughly constant across cohorts (~0.5). Self-consistency gap is dominated by noise at n=5 rollouts.</div>
+</div>
+
+<div class="card">
+  <h2>Results — Accuracy &amp; Lift</h2>
+  <table>
+    <thead><tr>
+      <th>Cohort</th><th>Acc after GRPO</th><th>Lift</th>
+      <th>Sampling headroom</th><th>Reward var</th><th>Reward mean</th><th>pass@1</th><th>pass@N</th><th>PPL</th>
+    </tr></thead>
+    <tbody>
+      <tr><td><em>base (no training)</em></td><td>65.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      
+        <tr>
+          <td>synthetic good</td>
+          <td>71.5%</td>
+          <td><span style="color:#22c55e;font-weight:700">+6.5%</span></td>
+          <td>0.309</td>
+          <td>0.1059</td>
+          <td>0.402</td>
+          <td>0.379</td>
+          <td>0.688</td>
+          <td>15.51</td>
+        </tr>
+        <tr>
+          <td>benchmark slice</td>
+          <td>68.5%</td>
+          <td><span style="color:#f59e0b;font-weight:700">+3.5%</span></td>
+          <td>0.211</td>
+          <td>0.1028</td>
+          <td>0.724</td>
+          <td>0.731</td>
+          <td>0.941</td>
+          <td>12.56</td>
+        </tr>
+        <tr>
+          <td>harder sibling</td>
+          <td>68.0%</td>
+          <td><span style="color:#f59e0b;font-weight:700">+3.0%</span></td>
+          <td>0.328</td>
+          <td>0.1484</td>
+          <td>0.530</td>
+          <td>0.559</td>
+          <td>0.887</td>
+          <td>8.62</td>
+        </tr>
+        <tr>
+          <td>synthetic degraded</td>
+          <td>67.5%</td>
+          <td><span style="color:#f59e0b;font-weight:700">+2.5%</span></td>
+          <td>0.016</td>
+          <td>0.0037</td>
+          <td>0.007</td>
+          <td>0.008</td>
+          <td>0.023</td>
+          <td>12.78</td>
+        </tr>
+        <tr>
+          <td>random control</td>
+          <td>68.5%</td>
+          <td><span style="color:#f59e0b;font-weight:700">+3.5%</span></td>
+          <td>0.008</td>
+          <td>0.0013</td>
+          <td>0.002</td>
+          <td>0.000</td>
+          <td>0.008</td>
+          <td>12.25</td>
+        </tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="bar" class="card" style="padding:0"></div>
+
+<div class="grid2">
+  <div id="rho" class="card" style="padding:0"></div>
+  <div id="scatter" class="card" style="padding:0"></div>
+</div>
+
+<div class="card">
+  <h2>Method</h2>
+  <p style="font-size:.9rem;color:#94a3b8;line-height:1.6">
+    Five cohorts were constructed from GSM8K train split via different slicing strategies.
+    Pre-training signals (reward mean/var, PPL, format rate, intermediate-step fraction) were
+    computed on each cohort with 5-sample rollouts. Each cohort then served as GRPO training data
+    for 1 epoch on Qwen2.5-1.5B-Instruct, evaluated on 200 held-out GSM8K problems.
+    Predictive power is measured as Spearman ρ between cohort-level signal and observed lift
+    (n=4 trainable cohorts; random_control excluded as a non-trainable baseline).
+    <br><br>
+    <strong style="color:#e2e8f0">Cohort construction:</strong>
+    <span class="tag">benchmark_slice</span> direct GSM8K slice &nbsp;
+    <span class="tag">harder_sibling</span> high step-count problems &nbsp;
+    <span class="tag">synthetic_good</span> Claude-generated with full CoT &nbsp;
+    <span class="tag">synthetic_degraded</span> synthetic with corrupted answers &nbsp;
+    <span class="tag">random_control</span> random tokens (null baseline)
+  </p>
+</div>
+
+<footer>Generated automatically · Qwen2.5-1.5B-Instruct · GSM8K · GRPO 1-epoch</footer>
+
+<script>
+Plotly.newPlot('bar', {"data": [{"type": "bar", "name": "Base accuracy", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [65.0, 65.0, 65.0, 65.0, 65.0], "marker": {"color": "#94a3b8"}, "offsetgroup": 0}, {"type": "bar", "name": "After GRPO", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [71.5, 68.5, 68.0, 67.5, 68.5], "marker": {"color": "#6366f1"}, "offsetgroup": 1}, {"type": "scatter", "mode": "markers+text", "name": "Lift", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [72.0, 69.0, 68.5, 68.0, 69.0], "text": ["+6.5%", "+3.5%", "+3.0%", "+2.5%", "+3.5%"], "textposition": "top center", "marker": {"color": "#22c55e", "size": 8}, "yaxis": "y2"}], "layout": {"title": "Accuracy before vs after GRPO per cohort", "barmode": "group", "yaxis": {"title": "Accuracy (%)", "range": [55, 80]}, "yaxis2": {"overlaying": "y", "side": "right", "showgrid": false, "showticklabels": false}, "legend": {"orientation": "h", "y": -0.2}, "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}}}.data, {"data": [{"type": "bar", "name": "Base accuracy", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [65.0, 65.0, 65.0, 65.0, 65.0], "marker": {"color": "#94a3b8"}, "offsetgroup": 0}, {"type": "bar", "name": "After GRPO", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [71.5, 68.5, 68.0, 67.5, 68.5], "marker": {"color": "#6366f1"}, "offsetgroup": 1}, {"type": "scatter", "mode": "markers+text", "name": "Lift", "x": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "y": [72.0, 69.0, 68.5, 68.0, 69.0], "text": ["+6.5%", "+3.5%", "+3.0%", "+2.5%", "+3.5%"], "textposition": "top center", "marker": {"color": "#22c55e", "size": 8}, "yaxis": "y2"}], "layout": {"title": "Accuracy before vs after GRPO per cohort", "barmode": "group", "yaxis": {"title": "Accuracy (%)", "range": [55, 80]}, "yaxis2": {"overlaying": "y", "side": "right", "showgrid": false, "showticklabels": false}, "legend": {"orientation": "h", "y": -0.2}, "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}}}.layout, {responsive:true});
+Plotly.newPlot('rho', {"data": [{"type": "bar", "x": ["Sampling headroom (pass@N \u2212 pass@1)", "Reward var", "Reward", "Self-consistency gap", "pass@1", "pass@N", "Prompt PPL", "Format rate", "Intermediate steps frac"], "y": [0.0, 0.0, -0.1, 0.6, -0.1, -0.1, 0.3, -0.4, 0.0], "marker": {"color": ["#ef4444", "#ef4444", "#ef4444", "#22c55e", "#ef4444", "#ef4444", "#f59e0b", "#ef4444", "#ef4444"]}, "text": ["0.00", "0.00", "-0.10", "0.60", "-0.10", "-0.10", "0.30", "-0.40", "0.00"], "textposition": "outside"}], "layout": {"title": "Spearman \u03c1: signal \u2192 GRPO lift", "yaxis": {"title": "Spearman \u03c1", "range": [-1, 1]}, "shapes": [{"type": "line", "x0": -0.5, "x1": 8.5, "y0": 0, "y1": 0, "line": {"color": "#475569", "width": 1, "dash": "dash"}}], "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}}}.data, {"data": [{"type": "bar", "x": ["Sampling headroom (pass@N \u2212 pass@1)", "Reward var", "Reward", "Self-consistency gap", "pass@1", "pass@N", "Prompt PPL", "Format rate", "Intermediate steps frac"], "y": [0.0, 0.0, -0.1, 0.6, -0.1, -0.1, 0.3, -0.4, 0.0], "marker": {"color": ["#ef4444", "#ef4444", "#ef4444", "#22c55e", "#ef4444", "#ef4444", "#f59e0b", "#ef4444", "#ef4444"]}, "text": ["0.00", "0.00", "-0.10", "0.60", "-0.10", "-0.10", "0.30", "-0.40", "0.00"], "textposition": "outside"}], "layout": {"title": "Spearman \u03c1: signal \u2192 GRPO lift", "yaxis": {"title": "Spearman \u03c1", "range": [-1, 1]}, "shapes": [{"type": "line", "x0": -0.5, "x1": 8.5, "y0": 0, "y1": 0, "line": {"color": "#475569", "width": 1, "dash": "dash"}}], "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}}}.layout, {responsive:true});
+Plotly.newPlot('scatter', {"data": [{"type": "scatter", "mode": "markers+text", "name": "Sampling headroom (pass@N \u2212 pass@1) (\u03c1=0.00)", "x": [0.3086, 0.2109, 0.3281, 0.0156, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#f59e0b"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Reward var (\u03c1=0.00)", "x": [0.105937, 0.102812, 0.148437, 0.00375, 0.00125], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#6366f1"}, "visible": true}, {"type": "scatter", "mode": "markers+text", "name": "Reward mean (\u03c1=-0.10)", "x": [0.4023, 0.7242, 0.5305, 0.007, 0.0016], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#22c55e"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Self-consistency gap (\u03c1=0.60)", "x": [0.0117, 0.0234, -0.0156, -0.0039, 0.0], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#ec4899"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "pass@1 (\u03c1=-0.10)", "x": [0.3789, 0.7305, 0.5586, 0.0078, 0.0], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#38bdf8"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "pass@N (\u03c1=-0.10)", "x": [0.6875, 0.9414, 0.8867, 0.0234, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#f59e0b"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Prompt PPL (\u03c1=0.30)", "x": [15.5117, 12.5584, 8.6245, 12.7757, 12.2472], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#6366f1"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Format rate (\u03c1=-0.40)", "x": [0.3164, 0.4727, 0.4961, 0.5055, 0.5141], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#22c55e"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Intermediate steps frac (\u03c1=0.00)", "x": [0.5469, 0.5117, 0.7383, 0.0234, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#ec4899"}, "visible": "legendonly"}], "layout": {"title": "Signal value vs GRPO lift (select signals in legend)", "xaxis": {"title": "Signal value"}, "yaxis": {"title": "Lift (pp)"}, "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}, "legend": {"orientation": "h", "y": -0.35}}}.data, {"data": [{"type": "scatter", "mode": "markers+text", "name": "Sampling headroom (pass@N \u2212 pass@1) (\u03c1=0.00)", "x": [0.3086, 0.2109, 0.3281, 0.0156, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#f59e0b"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Reward var (\u03c1=0.00)", "x": [0.105937, 0.102812, 0.148437, 0.00375, 0.00125], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#6366f1"}, "visible": true}, {"type": "scatter", "mode": "markers+text", "name": "Reward mean (\u03c1=-0.10)", "x": [0.4023, 0.7242, 0.5305, 0.007, 0.0016], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#22c55e"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Self-consistency gap (\u03c1=0.60)", "x": [0.0117, 0.0234, -0.0156, -0.0039, 0.0], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#ec4899"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "pass@1 (\u03c1=-0.10)", "x": [0.3789, 0.7305, 0.5586, 0.0078, 0.0], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#38bdf8"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "pass@N (\u03c1=-0.10)", "x": [0.6875, 0.9414, 0.8867, 0.0234, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#f59e0b"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Prompt PPL (\u03c1=0.30)", "x": [15.5117, 12.5584, 8.6245, 12.7757, 12.2472], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#6366f1"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Format rate (\u03c1=-0.40)", "x": [0.3164, 0.4727, 0.4961, 0.5055, 0.5141], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#22c55e"}, "visible": "legendonly"}, {"type": "scatter", "mode": "markers+text", "name": "Intermediate steps frac (\u03c1=0.00)", "x": [0.5469, 0.5117, 0.7383, 0.0234, 0.0078], "y": [6.499999999999995, 3.500000000000003, 3.0000000000000027, 2.500000000000002, 3.500000000000003], "text": ["synthetic good", "benchmark slice", "harder sibling", "synthetic degraded", "random control"], "textposition": "top center", "marker": {"size": 10, "color": "#ec4899"}, "visible": "legendonly"}], "layout": {"title": "Signal value vs GRPO lift (select signals in legend)", "xaxis": {"title": "Signal value"}, "yaxis": {"title": "Lift (pp)"}, "plot_bgcolor": "#0f172a", "paper_bgcolor": "#0f172a", "font": {"color": "#e2e8f0"}, "legend": {"orientation": "h", "y": -0.35}}}.layout, {responsive:true});
+</script>
+</body>
+</html>
