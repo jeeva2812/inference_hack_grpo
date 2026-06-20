@@ -1,5 +1,5 @@
-{"cohort": "benchmark_slice", "n_tasks": 256, "ppl_mean": 19.5008, "reward_mean_mean": 0.2828, "reward_var_mean": 0.149375, "format_rate_mean": 0.2516, "intermediate_frac": 0.7422}
-{"cohort": "harder_sibling", "n_tasks": 256, "ppl_mean": 11.7783, "reward_mean_mean": 0.2297, "reward_var_mean": 0.124062, "format_rate_mean": 0.2195, "intermediate_frac": 0.6367}
-{"cohort": "random_control", "n_tasks": 256, "ppl_mean": 19.1608, "reward_mean_mean": 0.0039, "reward_var_mean": 0.003125, "format_rate_mean": 0.2703, "intermediate_frac": 0.0195}
-{"cohort": "synthetic_degraded", "n_tasks": 256, "ppl_mean": 20.361, "reward_mean_mean": 0.0055, "reward_var_mean": 0.004375, "format_rate_mean": 0.2641, "intermediate_frac": 0.0273}
-{"cohort": "synthetic_good", "n_tasks": 256, "ppl_mean": 25.1914, "reward_mean_mean": 0.2109, "reward_var_mean": 0.1075, "format_rate_mean": 0.2148, "intermediate_frac": 0.5391}
+{"cohort": "benchmark_slice", "n_tasks": 256, "ppl_mean": 12.5584, "reward_mean_mean": 0.7484, "reward_var_mean": 0.102187, "format_rate_mean": 0.4922, "intermediate_frac": 0.5195}
+{"cohort": "harder_sibling", "n_tasks": 256, "ppl_mean": 8.6245, "reward_mean_mean": 0.5289, "reward_var_mean": 0.145312, "format_rate_mean": 0.4875, "intermediate_frac": 0.7266}
+{"cohort": "random_control", "n_tasks": 256, "ppl_mean": 12.2472, "reward_mean_mean": 0.0016, "reward_var_mean": 0.00125, "format_rate_mean": 0.5203, "intermediate_frac": 0.0078}
+{"cohort": "synthetic_degraded", "n_tasks": 256, "ppl_mean": 12.7757, "reward_mean_mean": 0.0062, "reward_var_mean": 0.004063, "format_rate_mean": 0.4828, "intermediate_frac": 0.0234}
+{"cohort": "synthetic_good", "n_tasks": 256, "ppl_mean": 15.5117, "reward_mean_mean": 0.4195, "reward_var_mean": 0.09625, "format_rate_mean": 0.3375, "intermediate_frac": 0.4883}
