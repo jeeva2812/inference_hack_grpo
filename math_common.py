@@ -20,6 +20,7 @@ SYSTEM_PROMPT = (
 GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")           # GSM8K gold line: '#### N'
 PRED_RE = re.compile(r"<answer>\s*(-?[\d,\.]+)\s*</answer>")
 NUM_RE = re.compile(r"-?\d+\.?\d*")
+STEPS_RE = re.compile(r"<<[^>]+>>")                    # GSM8K calc annotations <<a*b=c>>
 
 
 def extract_gold(answer_field: str) -> str:

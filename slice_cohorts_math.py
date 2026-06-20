@@ -31,15 +31,14 @@ import random
 import re
 from pathlib import Path
 
+from math_common import GOLD_RE, NUM_RE, STEPS_RE, extract_gold
+
 OUT_DIR = Path("cohorts")
 COHORT_SIZE = 256
 EVAL_SIZE = 256
 SEED = 42
 
-STEPS_RE = re.compile(r"<<[^>]+>>")
-NUM_RE = re.compile(r"-?\d+\.?\d*")
-GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")
-BOXED_RE = re.compile(r"\\boxed\{([^}]*)\}")
+BOXED_RE = re.compile(r"\\boxed\{([^}]*)\}")   # MATH-competition gold, slice-only
 
 
 # ── utilities ─────────────────────────────────────────────────────────────────
@@ -88,8 +87,7 @@ def _base(id_, q, a, gold, source, corruption=None):
 
 
 def featurize_gsm8k(ex, idx, source="gsm8k_train"):
-    m = GOLD_RE.search(ex["answer"])
-    gold = m.group(1).replace(",", "").strip() if m else ""
+    gold = extract_gold(ex["answer"])
     return _base(f"{source}_{idx}", ex["question"], ex["answer"], gold, source)
 
 

@@ -31,15 +31,12 @@ import random
 import re
 from pathlib import Path
 
+# Shared regexes + gold extraction. gold_of is extract_gold under its
+# historical name (kept for readability and the test suite). re stays for
+# the sentence-splitting in corrupt_shuffled_steps.
+from math_common import GOLD_RE, NUM_RE, STEPS_RE, extract_gold as gold_of
+
 OUT_DIR = Path("cohorts")
-GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")
-STEPS_RE = re.compile(r"<<[^>]+>>")
-NUM_RE = re.compile(r"-?\d+\.?\d*")
-
-
-def gold_of(answer: str) -> str:
-    m = GOLD_RE.search(answer)
-    return m.group(1).replace(",", "").strip() if m else ""
 
 
 def featurize(ex_id, question, answer, corruption):
