@@ -13,6 +13,77 @@ If we ship 3 metrics with sharp reasoning > 10 metrics with handwavy hope.
 
 ---
 
+## Two-person split: math (me) ∥ code (teammate)
+
+We run **two domains in parallel**, sharing the *same metric definitions*
+and the *same regression machinery*. This is not just "more data" — it is
+the strongest validation we can offer:
+
+> **If a metric predicts GRPO lift on BOTH math and code, it is
+> domain-general. If it only works on one, it is a domain artifact.**
+
+That cross-domain claim is what most teams won't have. It turns "we found a
+correlation on GSM8K" into "we found a *property of learnable data* that
+holds across modalities."
+
+### Track A — Math (owner: me / this repo)
+- Model: `Qwen2.5-Math-1.5B`
+- Benchmark: GSM8K
+- Verifier: regex on final `<answer>` numeric match
+- Status: baseline trains, signals extracting, cohorts sliced.
+
+### Track B — Code (owner: teammate)
+- Model: small **code** model — recommend `Qwen2.5-Coder-1.5B`
+  (matches our family/size, so cohort-size and step-count configs transfer
+  with minimal retuning).
+- Benchmark: **MBPP+** or **HumanEval+** (brief lists both as approved).
+  Recommend **MBPP+** — more tasks (~400) → more room to slice cohorts.
+- Verifier: **execute unit tests in a sandbox**, reward = fraction of tests
+  passed. This is the one genuinely new piece — no regex, needs a safe
+  subprocess runner with a timeout.
+- Cohorts: same *kinds* of axes — pass-rate buckets (easy/med/hard) by
+  base-model test-pass-rate.
+
+### Shared contract (the thing that makes parallel work)
+Both tracks must emit cohort summaries in the **same schema** so one
+regression script consumes both:
+
+```
+{ "domain": "math" | "code",
+  "cohort": str,
+  "n_tasks": int,
+  "signals": { "self_consistency_gap": float, "reward_var": float,
+               "prompt_ppl": float, ... },
+  "lift": float }      # acc_after - acc_before
+```
+
+Agree this JSON contract FIRST. Then the two of us can build independently
+and the analysis just concatenates both files. Metric definitions
+(self-consistency gap, reward variance) are **domain-agnostic** — they only
+depend on the rollout reward, not on whether it came from regex or unit
+tests. So the teammate reuses our `extract_signals.py` logic and only
+swaps the verifier + dataset loader.
+
+### What's genuinely different for code (teammate's TODO)
+1. **Sandbox executor** — run generated code against test cases in a
+   subprocess with a hard timeout + no network. This is the only real new
+   infra. Everything else mirrors the math track.
+2. **Prompt format** — code completion / function-signature style, not
+   `<answer>` tags.
+3. **Reward** — continuous (fraction of tests passed) rather than binary.
+   Nice bonus: continuous reward gives *richer* `reward_var` signal.
+
+### Division of GPU time
+Two tracks = two model families loaded. **Do not run both on one A100 at
+once** (OOM risk + contention). Either:
+- (a) Time-share one A100: math runs, then code runs. Safer on $100 budget.
+- (b) Spin a second A100 for the teammate if the credit pool allows
+  (~$2/hr × ~6 hr = ~$12 each, still cheap). Faster wall-clock.
+Recommend (b) if credits are shared and healthy — parallel wall-clock is
+worth $12.
+
+---
+
 ## What we have working
 - [x] GRPO baseline trains (50-step smoke test, gradients flow, rewards non-zero).
 - [x] 5 cohorts sliced by `(steps × qlen)` median split + a random control.
@@ -187,9 +258,17 @@ headroom for retries.
 ## What "winning" looks like
 
 A 1-page writeup with:
-1. One scatter: predicted lift vs actual lift, color-coded by cohort.
+1. One scatter: predicted lift vs actual lift, **math and code points on the
+   same axes**. If a metric's points line up across both domains, that single
+   plot makes the whole argument.
 2. One Pareto plot: compute-cost vs predictive ρ for each metric.
-3. Three paragraphs of *reasoning* explaining why `reward_var` and
-   `self_consistency_gap` beat the cheaper metrics.
-4. One sentence of honesty: "n=5 cohorts, take this as a hypothesis not a
-   conclusion." Judges respect that more than fake p-values.
+3. Three paragraphs of *reasoning* explaining why `self_consistency_gap` and
+   `reward_var` beat the cheaper metrics — and why the mechanism (GRPO
+   gradient ∝ within-group reward variance) is *domain-independent*, which is
+   why it should and does transfer from math to code.
+4. One sentence of honesty: "n cohorts per domain, take this as a hypothesis
+   not a conclusion." Judges respect that more than fake p-values.
+
+The differentiator: most teams will show one correlation on one benchmark.
+We show the *same* cheap metric predicting lift across two modalities. That's
+the difference between "a correlation" and "a property of learnable data."
