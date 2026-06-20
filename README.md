@@ -10,7 +10,14 @@ signals, then actually run GRPO on every cohort and measure the real accuracy
 lift. The cohort is the *only* variable — everything else (config, eval set,
 seed) is held fixed — so any difference in lift is attributable to the data.
 
-![Results](report/results.png)
+![Signal vs lift](report/results.png)
+
+> **Left:** each cohort's cheapest training-free signal (`sampling_headroom`) vs the
+> GRPO lift we actually measured — a weak positive trend (r = +0.50), but every point's
+> error bar overlaps the grey eval-noise band. **Right:** every signal ranked by its
+> correlation with lift. The n=5 "winner" (`format_rate`, −0.96) has no mechanism behind
+> it — a textbook small-sample spurious correlation, which is why we read this chart with
+> caution rather than crowning a metric.
 
 ---
 
