@@ -375,6 +375,20 @@ sorts out which ones matter.
    Anthropic credits, not GPU.
 4. **Negative result on purpose** — show raw token length *fails* to predict
    lift. Demonstrates we understand correlation vs causation.
+5. **Back-translation → memorization detector** *(strong swing, time-permitting)*.
+   Round-trip each question EN→FR→EN with a tiny local MT model
+   (`Helsinki-NLP/opus-mt-*`, ZERO tokens, runs in Phase 1). Two uses:
+   - **`paraphrase_consistency` signal** *(the novel part)*: agreement between
+     pass-rate on original vs back-translated phrasing. A task solved ONLY
+     with exact wording is brittle/memorized → little real capability for RL
+     to amplify; solved robustly across paraphrases → genuine skill. It's a
+     cheap **contamination/memorization probe** — directly on the brief's
+     "is this data teaching real skill?" question.
+   - **`back_translated` cohort**: a naturalistic mid-quality cohort sitting
+     between clean real data and `make_synthetic` corruption.
+   Caveat: back-translation mangles numbers — for math, re-verify gold after
+   round-trip; mostly a Track-A (NL) idea, weak on code. Backlog only given
+   the 8–9h budget.
 
 ### Compute-budget levers (pull only if we run short)
 
