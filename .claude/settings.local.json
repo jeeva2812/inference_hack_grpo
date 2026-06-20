@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import ensurepip\")",
+      "Bash(bash setup.sh make sure you install every dependency and library required)",
+      "Bash(./venv/bin/python -m pip install -U \"huggingface_hub[cli]\")",
+      "Bash(./venv/bin/python -c \"import huggingface_hub; print\\('huggingface_hub', huggingface_hub.__version__\\)\")",
+      "Bash(./venv/bin/hf version *)",
+      "Bash(./venv/bin/huggingface-cli version *)",
+      "Bash(env)",
+      "Read(//home/ubuntu/.cache/huggingface/**)",
+      "Read(//home/ubuntu/**)",
+      "Bash(./venv/bin/hf auth *)"
+    ]
+  }
+}

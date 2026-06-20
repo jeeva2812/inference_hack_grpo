@@ -20,7 +20,7 @@ If a "base" record already exists, the run also prints lift vs base.
 
 Usage:
   # baseline (before any training)
-  python eval_code.py --model Qwen/Qwen2.5-Coder-1.5B --label base --n 200
+  python eval_code.py --model Qwen/Qwen2.5-1.5B-Instruct --label base --n 200
 
   # after training a cohort (point --model at the checkpoint dir)
   python eval_code.py --model outputs/code_medium_pass --label medium_pass --n 200
@@ -38,7 +38,7 @@ from test_executor import extract_code_block, run_tests
 # torch / datasets / transformers are imported lazily inside main() so the pure
 # helpers (and the test suite) can import this module without the heavy deps.
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-1.5B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 RESULTS_DIR = Path("results")
 
 SYSTEM_PROMPT = (
@@ -120,7 +120,7 @@ def main():
     ap.add_argument("--split", default="test")
     ap.add_argument("--n", type=int, default=200, help="fixed test-slice size")
     ap.add_argument("--batch_size", type=int, default=16)
-    ap.add_argument("--max_new_tokens", type=int, default=512)
+    ap.add_argument("--max_new_tokens", type=int, default=1024)
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 

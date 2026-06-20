@@ -24,7 +24,7 @@ from pathlib import Path
 from test_executor import extract_code_block, run_tests
 from eval_code import build_prompt          # same prompt as eval/train/signals
 
-MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B"
+MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
 COHORT_DIR = Path("cohorts_code")
 
 

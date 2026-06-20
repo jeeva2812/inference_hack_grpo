@@ -42,11 +42,11 @@ from eval_code import build_prompt          # shared prompt = same input distrib
 
 COHORT_DIR = Path("cohorts_code")
 RESULTS_DIR = Path("results")
-MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B"
+MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
 
 N_ROLLOUTS = 6
 ROLLOUT_TEMP = 0.9
-MAX_NEW_TOKENS = 512
+MAX_NEW_TOKENS = 1024
 
 
 # ── pure signal construction (offline-testable, no torch) ────────────────────

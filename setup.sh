@@ -50,7 +50,16 @@ PY
 
 echo "== 4/4: done =="
 cat <<'MSG'
-Environment ready. Next:
+Environment ready. Installed in ./venv: torch, transformers, trl, datasets,
+accelerate, numpy, matplotlib, wandb (jinja2>=3.1.0). vllm intentionally skipped.
+
+!! IMPORTANT — ACTIVATE THE VENV IN EVERY NEW SHELL FIRST !!
+  source venv/bin/activate
+  # The scripts call `python` (not `python3`). `python` ONLY exists inside the
+  # venv, so if you skip this you'll get: "python: command not found".
+  # Verify with:  which python   ->  .../inference_hack_grpo/venv/bin/python
+
+Next (run these AFTER `source venv/bin/activate`):
   wandb login                                   # cloud curves (optional)
   export REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts
   tmux new -s code                              # survive SSH drops
@@ -59,6 +68,15 @@ Environment ready. Next:
   bash run_code_track.sh grpo1                  # dummy: 15-step GRPO + eval
   bash run_code_track.sh phase1                 # base eval + signals (all cohorts)
   bash run_code_track.sh phase2                 # train+eval per cohort -> summary
+
+Run phase1 + phase2 back-to-back in the BACKGROUND (survives SSH drops):
+  # -d = detached; phase2 only starts if phase1 succeeds (&&); output -> run_phase12.log
+  tmux new -s code -d 'source venv/bin/activate 2>/dev/null; \
+  export REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts &&  bash run_code_track.sh phase1 && bash run_code_track.sh phase2 |& tee run_phase12.log'
+  tmux attach -t code                           # watch live (Ctrl-b d to detach again)
+  tail -f run_phase12.log                        # ...or just follow the log
+  tmux ls                                        # list sessions / check it's still running
+
 If you installed system-wide (no venv), this shell already has `python`.
 If you used a venv, remember to `source venv/bin/activate` in new shells.
 MSG

@@ -9,8 +9,9 @@
 #   bash run_code_track.sh phase2     # (GPU) train+eval each cohort, then merge -> summary
 #   bash run_code_track.sh all        # check -> inference -> grpo1 -> phase1 -> phase2
 #
-# Knobs (env): EVAL_N (default 200), SMOKE_STEPS (15), MAX_STEPS (250),
-#              NUM_GENERATIONS (8), REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts
+# Knobs (env): EVAL_N (default 200), SMOKE_STEPS (15), MAX_STEPS (120),
+#              NUM_GENERATIONS (8), MAX_COMPLETION_LENGTH (1024),
+#              REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts
 set -euo pipefail
 
 COHORTS="benchmark_slice harder_sibling synthetic_good synthetic_degraded random_control"
@@ -48,8 +49,11 @@ phase2() {
     RUN_NAME=code_$c python grpo_code.py --cohort "$c"
     python eval_code.py --model "outputs/code_$c" --label "$c" --n "$EVAL_N"
   done
+  # once all cohorts are trained+evaled: merge lift, then plot signals + correlations
   python merge_summary.py --domain code
-  echo ">> results/code_summary.jsonl ready. Now: git add results/ && git commit && git push"
+  python plots.py
+  echo ">> results/code_summary.jsonl + report/ figures ready."
+  echo ">> Now: git add results/ report/ && git commit && git push"
 }
 
 case "${1:-all}" in

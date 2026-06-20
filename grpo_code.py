@@ -1,5 +1,5 @@
 """
-grpo_code.py — GRPO training, CODE track: Qwen2.5-Coder-1.5B on a cohort.
+grpo_code.py — GRPO training, CODE track: Qwen2.5-1.5B-Instruct on a cohort.
 Code-track analog of grpo_math.py.
 
 Trains on ONE cohort file (cohorts_code/<cohort>.jsonl) so cohort is the only
@@ -19,7 +19,8 @@ Loop all cohorts (Phase 2, in tmux):
 
 Knobs via env (so the runbook never edits code):
     REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts   # experiment tracking
-    MAX_STEPS=250 NUM_GENERATIONS=8              # game-plan Phase-2 values
+    MAX_STEPS=120 NUM_GENERATIONS=8              # game-plan Phase-2 values
+    MAX_COMPLETION_LENGTH=1024                   # generation budget
 """
 
 import argparse
@@ -35,14 +36,17 @@ from trl import GRPOConfig, GRPOTrainer
 from test_executor import compute_test_reward
 from eval_code import SYSTEM_PROMPT, build_user_content  # shared prompt = same distribution
 
-MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen2.5-Coder-1.5B")
+MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
 COHORT_DIR = Path("cohorts_code")
 
 REPORT_TO = os.environ.get("REPORT_TO", "none")
 # Phase-2 defaults follow the game plan (num_generations=8, 200-300 steps);
 # override down for a quick smoke test, e.g. MAX_STEPS=20.
-MAX_STEPS = int(os.environ.get("MAX_STEPS", "250"))
+MAX_STEPS = int(os.environ.get("MAX_STEPS", "120"))
 NUM_GENERATIONS = int(os.environ.get("NUM_GENERATIONS", "8"))
+# Generation/context budget. TRL 1.6.0's GRPOConfig only exposes the completion
+# side (no max_prompt_length); prompts are kept full.
+MAX_COMPLETION_LENGTH = int(os.environ.get("MAX_COMPLETION_LENGTH", "1024"))
 
 
 def correctness_reward(completions, test_list, test_setup_code=None, **kwargs):
@@ -104,7 +108,8 @@ def main():
 
     train_ds = build_dataset(args.cohort)
     print(f"cohort={args.cohort}  n_tasks={len(train_ds)}  "
-          f"steps={MAX_STEPS}  num_generations={NUM_GENERATIONS}")
+          f"steps={MAX_STEPS}  num_generations={NUM_GENERATIONS}  "
+          f"completion_len={MAX_COMPLETION_LENGTH}")
 
     config = GRPOConfig(
         output_dir=f"outputs/{run_name}",
@@ -113,7 +118,7 @@ def main():
         per_device_train_batch_size=4,
         gradient_accumulation_steps=2,        # 4*2=8 divisible by num_generations=8
         num_generations=NUM_GENERATIONS,
-        max_completion_length=512,
+        max_completion_length=MAX_COMPLETION_LENGTH,
         max_steps=MAX_STEPS,
         logging_steps=1,
         save_steps=MAX_STEPS,                 # one checkpoint at the end -> eval_code
