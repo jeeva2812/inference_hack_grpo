@@ -125,7 +125,7 @@ def main():
         learning_rate=1e-6,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
-        num_generations=6,
+        num_generations=4,
         max_completion_length=1024,
         max_steps=args.max_steps,
         logging_steps=1,
