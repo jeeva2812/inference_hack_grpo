@@ -1,1 +1,2 @@
-{"label": "base", "model": "Qwen/Qwen2.5-Math-1.5B", "n": 200, "accuracy": 0.165}
+{"label": "base", "model": "Qwen/Qwen2.5-1.5B-Instruct", "n": 200, "accuracy": 0.65}
+{"label": "benchmark_slice", "model": "outputs/math_benchmark_slice_seed0", "n": 200, "accuracy": 0.685}
