@@ -16,8 +16,9 @@ env/
 .cache/
 wandb/
 
-# Generated figures (regenerable from results/ via plots.py)
-report/
+# Stale fake-data figure (plots.py fallback). The real figure report/results.png
+# (from analyze.py) and report/index.html ARE committed for the README.
+report/figures.png
 
 # Local scratch — but DO commit results/ summaries and cohorts/
 *.log
