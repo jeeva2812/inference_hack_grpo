@@ -18,7 +18,10 @@ SYSTEM_PROMPT = (
 )
 
 GOLD_RE = re.compile(r"####\s*(-?[\d,\.]+)")           # GSM8K gold line: '#### N'
-PRED_RE = re.compile(r"<answer>\s*(-?[\d,\.]+)\s*</answer>")
+# Require >=1 digit inside the tag so an echoed literal "<answer>...</answer>"
+# template (which the model sometimes parrots) is NOT matched as a prediction.
+PRED_RE = re.compile(r"<answer>\s*(-?[\d.,]*\d[\d.,]*)\s*</answer>")
+ANSWER_RE = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)  # lenient, for extract
 BOXED_RE = re.compile(r"\\boxed\{([^{}]*)\}")          # Qwen-Math native final answer
 NUM_RE = re.compile(r"-?\d+\.?\d*")
 STEPS_RE = re.compile(r"<<[^>]+>>")                    # GSM8K calc annotations <<a*b=c>>
@@ -29,23 +32,26 @@ def extract_gold(answer_field: str) -> str:
     return m.group(1).replace(",", "").strip() if m else ""
 
 
-def extract_pred(text: str) -> str:
-    # 1) the format we explicitly ask for: <answer>N</answer>
-    m = PRED_RE.search(text)
-    if m:
-        return m.group(1).replace(",", "").strip()
-    # 2) \boxed{N} — Qwen2.5-Math's NATIVE final-answer format. The model emits
-    #    this even though the prompt asks for <answer> tags. Take the LAST box
-    #    (the model's final answer after its CoT) and pull the number out of it;
-    #    the box may carry "$", units, or LaTeX around the number.
-    for box in reversed(BOXED_RE.findall(text)):
-        nums = NUM_RE.findall(box.replace(",", ""))
-        if nums:
-            return nums[-1]
-    # 3) last resort: last number anywhere. Unreliable for base models that
-    #    ramble past the answer until max_new_tokens — that's why 1 and 2 exist.
-    nums = NUM_RE.findall(text.replace(",", ""))
+def _last_number(s: str) -> str:
+    nums = NUM_RE.findall(s.replace(",", ""))
     return nums[-1] if nums else ""
+
+
+def extract_pred(text: str) -> str:
+    # 1) <answer>...</answer> — the format we ask for. Use the LAST such block and
+    #    pull the number out of it (content may carry "$"/units/LaTeX). Empty or
+    #    non-numeric blocks (e.g. an echoed "<answer>...</answer>" template) skip.
+    for content in reversed(ANSWER_RE.findall(text)):
+        n = _last_number(content)
+        if n:
+            return n
+    # 2) \boxed{N} — Qwen2.5-Math's native final-answer format. Take the last box.
+    for box in reversed(BOXED_RE.findall(text)):
+        n = _last_number(box)
+        if n:
+            return n
+    # 3) last resort: last number anywhere in the text.
+    return _last_number(text)
 
 
 def is_correct(pred: str, gold: str) -> bool:

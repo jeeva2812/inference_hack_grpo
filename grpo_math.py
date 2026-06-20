@@ -25,7 +25,8 @@ from trl import GRPOConfig, GRPOTrainer
 # as lift is later measured (single source of truth in math_common).
 from math_common import SYSTEM_PROMPT, extract_gold, extract_pred, is_correct
 
-MODEL_ID = "Qwen/Qwen2.5-Math-1.5B"
+MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"  # base model can't follow zero-shot
+# instructions (rambles to max_tokens, never boxes); Instruct stops + boxes cleanly.
 
 # Tracking backend: "none" (default) or "wandb". Overridable without code edits.
 REPORT_TO = os.environ.get("REPORT_TO", "none")

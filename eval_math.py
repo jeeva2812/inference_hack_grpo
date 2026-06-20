@@ -33,7 +33,7 @@ from pathlib import Path
 # pure-stdlib, so importing it here keeps that property.
 from math_common import build_prompt, extract_gold, extract_pred, is_correct
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-Math-1.5B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-Math-1.5B-Instruct"  # see grpo_math.py: base model unusable zero-shot
 RESULTS_DIR = Path("results")
 
 
