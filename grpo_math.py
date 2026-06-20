@@ -33,10 +33,14 @@ RUN_NAME = os.environ.get("RUN_NAME", "qwen25-math-1_5b-grpo-smoke")
 
 
 def correctness_reward(completions, answer, **kwargs):
+    # `answer` carries the BARE gold number (build_dataset normalizes it), so the
+    # reward scores correctness exactly like extract_signals_math (is_correct vs
+    # row["gold"]). Some cohorts (e.g. synthetic_good/Orca) have no '#### N' line
+    # in their answer text, so parsing it here would silently zero their reward.
     rewards = []
     for comp, gold in zip(completions, answer):
         text = comp[0]["content"] if isinstance(comp, list) else comp
-        rewards.append(1.0 if is_correct(extract_pred(text), extract_gold(gold)) else 0.0)
+        rewards.append(1.0 if is_correct(extract_pred(text), gold) else 0.0)
     return rewards
 
 
@@ -56,9 +60,12 @@ def build_dataset(cohort: str | None):
 
     Phase 2: pass --cohort <name> to train on cohorts/<name>.jsonl. Each
     cohort is the SAME size (256) — only data quality differs — so cohort
-    is the only variable behind lift. Cohort rows carry the full GSM8K
-    'answer' string (with '#### N'), which correctness_reward parses, so the
-    mapping is identical to vanilla GSM8K.
+    is the only variable behind lift.
+
+    The reward is scored against the BARE gold number: cohort rows already
+    carry a clean `gold` field, while vanilla GSM8K rows only have the full
+    'answer' text, so we derive gold via extract_gold there. (synthetic_good
+    has no '#### N' in its answer text — relying on that would zero its reward.)
 
     Omit --cohort to fall back to vanilla GSM8K-train (smoke testing only).
     """
@@ -70,12 +77,13 @@ def build_dataset(cohort: str | None):
         ds = load_dataset("openai/gsm8k", "main", split="train")
 
     def fmt(ex):
+        gold = ex["gold"] if ex.get("gold") else extract_gold(ex["answer"])
         return {
             "prompt": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": ex["question"]},
             ],
-            "answer": ex["answer"],
+            "answer": gold,
         }
 
     return ds.map(fmt)
