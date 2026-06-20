@@ -9,6 +9,13 @@ reward_mean       : mean correctness reward across N high-temp rollouts.
 reward_var        : variance of correctness reward — key GRPO learnability signal.
                     Near-0 var (all right or all wrong) = no gradient signal.
                     High var (model is sometimes right) = good training material.
+pass_at_1         : greedy-equivalent — fraction correct on first rollout.
+pass_at_n         : fraction of tasks where ANY rollout was correct (pass@N).
+sampling_headroom : pass_at_n − pass_at_1 — latent capability RL can unlock.
+                    High headroom = model knows the answer but can't reliably
+                    produce it; sweet spot for GRPO to convert luck into habit.
+self_consistency_gap : majority-vote accuracy − pass_at_1 (greedy proxy).
+                    Measures how much sampling consensus helps over greedy.
 format_rate       : fraction of rollouts that produced <answer>...</answer>.
 mean_length       : mean completion token length across rollouts.
 
@@ -90,14 +97,21 @@ def rollout_signals_batch(rows: list, model, tokenizer) -> list:
             fmt_hits += int(has_format(text))
             lengths.append(int(real.numel()))
 
-        mean_r = sum(rewards) / len(rewards)
-        var_r  = sum((r - mean_r) ** 2 for r in rewards) / len(rewards)
+        mean_r   = sum(rewards) / len(rewards)
+        var_r    = sum((r - mean_r) ** 2 for r in rewards) / len(rewards)
+        pass_at1 = rewards[0]                          # first rollout = greedy proxy
+        pass_atn = float(any(r == 1.0 for r in rewards))
+        majority = float(sum(rewards) / len(rewards) >= 0.5)
         out.append({
-            "reward_mean":  round(mean_r, 4),
-            "reward_var":   round(var_r,  6),
-            "format_rate":  round(fmt_hits / N_ROLLOUTS, 4),
-            "mean_length":  round(sum(lengths) / len(lengths), 1),
-            "rewards_raw":  rewards,
+            "reward_mean":           round(mean_r, 4),
+            "reward_var":            round(var_r,  6),
+            "pass_at_1":             pass_at1,
+            "pass_at_n":             pass_atn,
+            "sampling_headroom":     round(pass_atn - pass_at1, 4),
+            "self_consistency_gap":  round(majority - pass_at1, 4),
+            "format_rate":           round(fmt_hits / N_ROLLOUTS, 4),
+            "mean_length":           round(sum(lengths) / len(lengths), 1),
+            "rewards_raw":           rewards,
         })
     return out
 
@@ -150,8 +164,12 @@ def process_cohort(path: Path, model, tokenizer, max_tasks: int | None, batch_si
         "n_tasks":           len(results),
         "ppl_mean":          round(sum(s["prompt_ppl"]  for s in sigs) / len(sigs), 4),
         "reward_mean_mean":  round(sum(s["reward_mean"] for s in sigs) / len(sigs), 4),
-        "reward_var_mean":   round(sum(s["reward_var"]  for s in sigs) / len(sigs), 6),
-        "format_rate_mean":  round(sum(s["format_rate"] for s in sigs) / len(sigs), 4),
+        "reward_var_mean":          round(sum(s["reward_var"]  for s in sigs) / len(sigs), 6),
+        "format_rate_mean":         round(sum(s["format_rate"] for s in sigs) / len(sigs), 4),
+        "pass_at_1_mean":           round(sum(s["pass_at_1"]  for s in sigs) / len(sigs), 4),
+        "pass_at_n_mean":           round(sum(s["pass_at_n"]  for s in sigs) / len(sigs), 4),
+        "sampling_headroom_mean":   round(sum(s["sampling_headroom"] for s in sigs) / len(sigs), 4),
+        "self_consistency_gap_mean":round(sum(s["self_consistency_gap"] for s in sigs) / len(sigs), 4),
         # fraction of tasks where the model is sometimes right but not always
         # (0 < reward_mean < 1) — the "intermediate difficulty" pool
         "intermediate_frac": round(
