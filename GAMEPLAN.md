@@ -376,6 +376,30 @@ sorts out which ones matter.
 4. **Negative result on purpose** — show raw token length *fails* to predict
    lift. Demonstrates we understand correlation vs causation.
 
+### Compute-budget levers (pull only if we run short)
+
+These are parked, not planned. Decide based on actual credit burn.
+
+- **LoRA / PEFT for GRPO training** *(the real budget SAVER)*. Train only
+  low-rank adapters instead of full weights → less memory, faster steps,
+  cheaper. TRL supports it via a `peft` `LoraConfig` passed to `GRPOTrainer`.
+  Trade-off: lift magnitude may differ from full fine-tuning, so if we go
+  LoRA we must use it for **all** cohorts (keep cohort the only variable).
+  Promote this first if credits get tight — it directly buys more cohorts or
+  longer runs. Cost: *negative* (saves money).
+- **Precision portability** *(science add-on, NOT a saver)*. Compute the
+  signal basket with a cheap proxy model — 4-bit (`bitsandbytes`, one kwarg)
+  or a smaller checkpoint (Qwen2.5-Math-0.5B) — but predict the lift of the
+  real **bf16** GRPO run. If cheap-model signals still rank cohorts, we've
+  pushed the metric down the *cost* axis without losing predictive power —
+  the "break the frontier" result the brief asks for. Each metric becomes a
+  curve (bf16 → 4-bit → 0.5B) on the Pareto plot, not a dot. Mechanistic bet:
+  outcome signals (sampling headroom) survive quantization; gradient signals
+  may degrade (quant noise corrupts gradient direction) — *which* survive is
+  itself a finding. Cost: ~1 extra GPU-hr, reuses `signals.py` unchanged.
+- **Do NOT** quantize or FP8 the *training* — at 1.5B it adds instability
+  with no memory benefit (model is ~3 GB, A100 has ~75 GB free). bf16 stays.
+
 # Appendix C — Shared cohort-summary schema
 
 Both tracks emit this, one row per cohort. The analysis concatenates them.
