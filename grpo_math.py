@@ -129,7 +129,8 @@ def main():
         max_completion_length=1024,
         max_steps=args.max_steps,
         logging_steps=1,
-        save_steps=args.max_steps,
+        save_strategy="no",     # don't write a checkpoint-N subdir; we save the
+                                # final model to output_dir root explicitly below
         bf16=True,
         gradient_checkpointing=True,
         report_to=REPORT_TO,    # "none" or "wandb" via env var
@@ -145,6 +146,14 @@ def main():
         train_dataset=train_ds,
     )
     trainer.train()
+
+    # Persist the FINAL model to outputs/<run_name>/ root (NOT a checkpoint-N
+    # subdir) so `eval_math.py --model outputs/<run_name>` loads a complete model:
+    # save_model writes config.json (with model_type) + weights; save the
+    # tokenizer alongside so reloads need no slow->fast conversion deps.
+    trainer.save_model(config.output_dir)
+    tokenizer.save_pretrained(config.output_dir)
+    print(f"=== saved final model + tokenizer to {config.output_dir} ===")
 
 
 if __name__ == "__main__":
