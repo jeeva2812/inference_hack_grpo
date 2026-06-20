@@ -1,0 +1,11 @@
+torch
+transformers
+trl
+datasets
+accelerate
+# analysis + tracking (lightweight, also installable on a laptop)
+numpy
+matplotlib
+wandb
+# optional: sentence-transformers for embedding-based signals (tier 2.5)
+# sentence-transformers
