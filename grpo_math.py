@@ -10,9 +10,13 @@ Experiment tracking: set env vars to stream metrics to Weights & Biases
 Defaults to "none" (terminal only) so it never breaks if W&B isn't set up.
 """
 
+import argparse
+import json
 import os
 import re
-from datasets import load_dataset
+from pathlib import Path
+
+from datasets import Dataset, load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from trl import GRPOConfig, GRPOTrainer
@@ -71,8 +75,23 @@ def format_reward(completions, **kwargs):
     return out
 
 
-def build_dataset():
-    ds = load_dataset("openai/gsm8k", "main", split="train")
+def build_dataset(cohort: str | None):
+    """Load the training data for one run.
+
+    Phase 2: pass --cohort <name> to train on cohorts/<name>.jsonl. Each
+    cohort is the SAME size (256) — only data quality differs — so cohort
+    is the only variable behind lift. Cohort rows carry the full GSM8K
+    'answer' string (with '#### N'), which correctness_reward parses, so the
+    mapping is identical to vanilla GSM8K.
+
+    Omit --cohort to fall back to vanilla GSM8K-train (smoke testing only).
+    """
+    if cohort:
+        path = Path("cohorts") / f"{cohort}.jsonl"
+        rows = [json.loads(line) for line in path.open(encoding="utf-8") if line.strip()]
+        ds = Dataset.from_list(rows)
+    else:
+        ds = load_dataset("openai/gsm8k", "main", split="train")
 
     def fmt(ex):
         return {
@@ -87,25 +106,46 @@ def build_dataset():
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--cohort", default=None,
+                    help="cohort name in cohorts/<name>.jsonl; omit for vanilla GSM8K (smoke)")
+    ap.add_argument("--max_steps", type=int, default=50,
+                    help="bump to ~200-300 for real Phase-2 cohort runs")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="vary across repeat runs of the same cohort to de-noise lift")
+    args = ap.parse_args()
+
+    # Run name: env RUN_NAME wins (per-team dashboard), else derive from cohort+seed.
+    # outputs/<run_name> is exactly what eval_math.py --model points at afterwards.
+    default_run = (f"math_{args.cohort}_seed{args.seed}"
+                   if args.cohort else "qwen25-math-1_5b-grpo-smoke")
+    run_name = os.environ.get("RUN_NAME", default_run)
+    print(f"=== GRPO run: {run_name} "
+          f"(cohort={args.cohort or 'gsm8k-train'}, steps={args.max_steps}, seed={args.seed}) ===")
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         torch_dtype=torch.bfloat16,
     )
 
-    train_ds = build_dataset()
+    train_ds = build_dataset(args.cohort)
 
+    # NOTE: config is IDENTICAL across cohorts on purpose — only the data
+    # (and --seed for repeats) may change, so cohort is the only variable
+    # explaining differences in lift.
     config = GRPOConfig(
-        output_dir=f"outputs/{RUN_NAME}",
-        run_name=RUN_NAME,
+        output_dir=f"outputs/{run_name}",
+        run_name=run_name,
+        seed=args.seed,
         learning_rate=1e-6,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
         num_generations=4,
         max_completion_length=512,
-        max_steps=50,
+        max_steps=args.max_steps,
         logging_steps=1,
-        save_steps=50,
+        save_steps=args.max_steps,
         bf16=True,
         gradient_checkpointing=True,
         report_to=REPORT_TO,    # "none" or "wandb" via env var

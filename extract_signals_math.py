@@ -210,8 +210,13 @@ def main():
         files = [COHORT_DIR / f"{args.cohort}.jsonl"]
     else:
         files = sorted(COHORT_DIR.glob("*.jsonl"))
-        # skip already-processed signal files
-        files = [f for f in files if "_signals" not in f.name]
+        # Skip: already-processed signal files; this script's own aggregate
+        # output (summary.jsonl, which lacks task fields); and eval_slice —
+        # the FIXED benchmark for measuring lift, not a training cohort.
+        # Running rollouts on it wastes GPU and would pollute the predictor set.
+        SKIP_STEMS = {"summary", "eval_slice"}
+        files = [f for f in files
+                 if "_signals" not in f.name and f.stem not in SKIP_STEMS]
 
     summaries = []
     for path in files:
@@ -225,6 +230,17 @@ def main():
         for s in summaries:
             f.write(json.dumps(s, ensure_ascii=False) + "\n")
     print(f"\nSummary -> {summary_path}")
+
+    # Also write the per-cohort aggregate to the cross-track contract path
+    # (GAMEPLAN Phase 1 output). This is the predictor side of the final
+    # signals-vs-lift regression; Phase 2 appends lift to the same rows.
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+    contract_path = results_dir / "math_signals.jsonl"
+    with contract_path.open("w", encoding="utf-8") as f:
+        for s in summaries:
+            f.write(json.dumps(s, ensure_ascii=False) + "\n")
+    print(f"Contract -> {contract_path}")
 
 
 if __name__ == "__main__":
