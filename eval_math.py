@@ -89,7 +89,15 @@ def main():
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
     print(f"Loading {args.model} ...")
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    # GRPO checkpoints save only the slow tokenizer files; rebuilding the fast
+    # tokenizer from them needs tiktoken/sentencepiece and can fail on a fresh
+    # box. GRPO never changes the tokenizer, so fall back to the base model's.
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
+    except Exception as e:
+        print(f"  tokenizer load from {args.model} failed ({type(e).__name__}); "
+              f"using {DEFAULT_MODEL} tokenizer (unchanged by GRPO)")
+        tokenizer = AutoTokenizer.from_pretrained(DEFAULT_MODEL)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"            # required for batched generation

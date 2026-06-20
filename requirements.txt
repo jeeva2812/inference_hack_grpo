@@ -4,6 +4,10 @@ trl
 datasets
 accelerate
 vllm
+# tokenizer backends — Qwen GRPO checkpoints save only the slow tokenizer; these
+# are needed to reload it as a fast tokenizer at eval time (else ValueError).
+tiktoken
+sentencepiece
 # analysis + tracking (lightweight, also installable on a laptop)
 numpy
 matplotlib
