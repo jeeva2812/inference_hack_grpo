@@ -1,3 +1,4 @@
 {"label": "base", "model": "Qwen/Qwen2.5-1.5B-Instruct", "n": 200, "accuracy": 0.65}
 {"label": "benchmark_slice", "model": "outputs/math_benchmark_slice_seed0", "n": 200, "accuracy": 0.685}
 {"label": "harder_sibling", "model": "outputs/math_harder_sibling_seed0", "n": 200, "accuracy": 0.68}
+{"label": "synthetic_good", "model": "outputs/math_synthetic_good_seed0", "n": 200, "accuracy": 0.715}
