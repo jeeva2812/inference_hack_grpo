@@ -1,272 +1,415 @@
-# Game plan — winning this hackathon
+# Game Plan
 
-## North star
-The judges said it twice: **they care about the rationale**, not the absolute
-numbers. So our deliverable is a *story*:
+## TL;DR
 
-> "Here is a ladder of metrics from free to expensive. Here is *why* each
-> one should predict GRPO lift, derived from first principles about how GRPO
-> actually works. Here is where each one sits on the cost-quality frontier.
-> Here are the ones that broke the frontier — and why we think they did."
+We are answering: **which cheap, training-free metric best predicts how much
+a model improves after GRPO?** Our edge is that we test the answer on **two
+different domains with two different models and two different benchmarks** —
+math and code. A metric that predicts RL lift on *both* is a property of
+learnable data, not a quirk of one benchmark. That cross-domain claim is the
+thing most teams won't have.
 
-If we ship 3 metrics with sharp reasoning > 10 metrics with handwavy hope.
+**We do not pre-pick a winner. We run a bake-off.** We compute a basket of
+candidate metrics on each cohort and let the cross-domain regression crown
+the one that actually predicts lift. The two we're most excited about (and
+which most teams won't think of) are novel — but they earn the spotlight only
+if the data backs them:
+
+> - **Sampling headroom** = `pass@N − pass@1` — RL converts latent capability
+>   into reliable capability. Cheap, sharp, our safe anchor.
+> - **Gradient coherence** (dataset-level) — do the cohort's tasks pull the
+>   model in the *same* direction? Captures inter-task synergy that no
+>   per-task average can see. The high-ceiling bet.
+> - **Baselines** (everyone has these): reward variance, prompt perplexity,
+>   pass-rate, difficulty. These are the "cheap floor" we expect to beat.
+> - **Deliverable:** one scatter (predicted vs actual lift, both domains) +
+>   one Pareto plot (metric cost vs predictive power), with the winner chosen
+>   empirically, not asserted.
+
+The judges said twice they care about **rationale over numbers**. So every
+candidate ships with a first-principles reason it *should* predict lift — and
+we report which reasons survived contact with the data, including the ones
+that didn't.
 
 ---
 
-## Two-person split: math (me) ∥ code (teammate)
+## The bet: why cross-domain wins
 
-We run **two domains in parallel**, sharing the *same metric definitions*
-and the *same regression machinery*. This is not just "more data" — it is
-the strongest validation we can offer:
+Most teams will pick one benchmark, slice it, train, and report one
+correlation. That's "we found a correlation on GSM8K." It's fragile — the
+metric might just be a difficulty proxy for that one dataset.
 
-> **If a metric predicts GRPO lift on BOTH math and code, it is
-> domain-general. If it only works on one, it is a domain artifact.**
+We instead run two independent tracks that share **only the metric
+definitions and the analysis**:
 
-That cross-domain claim is what most teams won't have. It turns "we found a
-correlation on GSM8K" into "we found a *property of learnable data* that
-holds across modalities."
+| | Track A — Math | Track B — Code |
+|---|---|---|
+| Owner | me / this repo | teammate |
+| Model | `Qwen2.5-Math-1.5B` | `Qwen2.5-Coder-1.5B` |
+| Benchmark | GSM8K | MBPP+ (recommended) or HumanEval+ |
+| Verifier | regex numeric match on `<answer>` | execute unit tests in a sandbox |
+| Reward | binary (correct / not) | continuous (fraction of tests passed) |
 
-### Track A — Math (owner: me / this repo)
-- Model: `Qwen2.5-Math-1.5B`
-- Benchmark: GSM8K
-- Verifier: regex on final `<answer>` numeric match
-- Status: baseline trains, signals extracting, cohorts sliced.
+The metrics (self-consistency gap, reward variance, perplexity) depend
+**only on the rollout reward**, never on how the reward was produced. So the
+same metric code runs on both tracks unchanged. If the metric → lift
+relationship holds across both, we've shown something general. **That is the
+win.**
 
-### Track B — Code (owner: teammate)
-- Model: small **code** model — recommend `Qwen2.5-Coder-1.5B`
-  (matches our family/size, so cohort-size and step-count configs transfer
-  with minimal retuning).
-- Benchmark: **MBPP+** or **HumanEval+** (brief lists both as approved).
-  Recommend **MBPP+** — more tasks (~400) → more room to slice cohorts.
-- Verifier: **execute unit tests in a sandbox**, reward = fraction of tests
-  passed. This is the one genuinely new piece — no regex, needs a safe
-  subprocess runner with a timeout.
-- Cohorts: same *kinds* of axes — pass-rate buckets (easy/med/hard) by
-  base-model test-pass-rate.
+---
 
-### Shared contract (the thing that makes parallel work)
-Both tracks must emit cohort summaries in the **same schema** so one
-regression script consumes both:
+## Training data vs. eval benchmark (read this — it's the core design call)
+
+**The eval benchmark is FIXED. The training cohorts are the VARIABLE.**
+`lift = accuracy_after − accuracy_before` is always measured on the same
+held-out benchmark test slice (GSM8K test for math, MBPP+ test for code).
+What changes between runs is *only the data we GRPO on*.
+
+**Why we do NOT just slice the benchmark's own train split.**
+If every cohort is a slice of GSM8K-train, all cohorts are the same quality,
+same distribution — we're only varying *which* easy/in-distribution tasks we
+pick. Lift will be similar across cohorts, the dependent variable barely
+moves, and a metric has almost nothing to predict. We'd be fitting a line to
+points that are all stacked on top of each other.
+
+**What we do instead: cohorts from genuinely different sources.**
+To get real spread in cohort *quality* (and therefore in lift), draw the
+training pool from a mix:
+
+| Cohort source | Math track | Code track | Expected quality |
+|---|---|---|---|
+| Benchmark train slice | GSM8K train | MBPP train | high (in-distribution) |
+| Harder sibling dataset | MATH, GSM-Symbolic | HumanEval, LiveCodeBench | medium-high, distribution-shifted |
+| Synthetic — good | Claude-generated, verified | Claude-generated + tests pass | variable |
+| Synthetic — degraded | wrong/noisy CoT, shuffled steps | buggy tests, wrong refs | deliberately low |
+| Random / off-task control | non-math text or trivial Qs | non-code or trivial snippets | near-zero (control) |
+
+Each cohort stays **size-matched** (e.g. 256 tasks) so size is never a
+confound — source/quality is the only variable. The degraded and control
+cohorts are not filler: they anchor the *low-lift* end of the regression, and
+they're exactly where a good metric should correctly predict "don't train on
+this." A metric that only ranks good cohorts but can't flag bad data is half
+a metric.
+
+**The "coverage vs. eval" caveat → make it a signal, not a bug.**
+When a cohort is from a shifted distribution, some lift (or lack of it) comes
+from distribution match rather than learnability. Rather than fight this, we
+*measure* it: `coverage` = mean embedding similarity between the cohort and
+the eval set (Appendix A). It enters the basket as its own candidate and as a
+control variable in the regression.
+
+---
+
+## Roles & ownership
+
+- **Track A (math)** — this repo, owned by me. `grpo_baseline.py`,
+  `slice_cohorts.py`, `extract_signals.py` already exist.
+- **Track B (code)** — teammate. Forks the same three scripts, swaps the
+  dataset loader + verifier (the sandbox executor is the only genuinely new
+  piece), keeps everything else identical.
+- **Shared, built once** — the cohort-summary JSON schema (Appendix C), the
+  regression/analysis script, and the dashboard. These consume both tracks'
+  outputs. Whoever finishes their track first builds these.
+
+**Do this first:** both agree on the JSON contract in Appendix C *before*
+writing track-specific code. If both tracks emit the same schema, the final
+merge is a concatenation. If they don't, you lose the last hour reconciling
+formats instead of analyzing.
+
+---
+
+## The flow
+
+Five phases. Phases 1–2 need a GPU; 0, 3, 4 are offline. Each person runs
+their own track through phases 1–2 in parallel on their own $100 box.
+
+### Phase 0 — Contract & cohorts (OFFLINE, ~45 min)
+**Goal:** lock the interface and assemble the training cohorts so the two
+tracks can run independently.
+- Agree the cohort-summary JSON schema (Appendix C).
+- Build **source-diverse, size-matched cohorts** (256 tasks each) per the
+  "Training data vs. eval benchmark" table. v1 minimum = 5 cohorts:
+  `benchmark_slice`, `harder_sibling`, `synthetic_good`, `synthetic_degraded`,
+  `random_control`. This deliberately spans the quality range so lift has
+  spread to predict.
+- Fix the eval test slice now (same one used before & after, every cohort).
+- Each track writes its `slice_cohorts.py` equivalent → `cohorts/*.jsonl`.
+  Synthetic cohorts use **Anthropic credits, not GPU** — generate them in
+  this offline phase.
+**Output:** cohort files on disk, fixed eval slice, agreed schema. No GPU yet.
+
+### Phase 1 — Signals (GPU ON, ~1.5 h per track)
+**Goal:** compute the cheap, training-free metrics that we'll later test as
+lift predictors.
+- Run `extract_signals.py` over every cohort: the full candidate basket
+  (Appendix A). `prompt_ppl`, `reward_var`, `intermediate_frac`,
+  `self_consistency_gap`, and `sampling_headroom` all reuse the same N
+  rollouts — near-free. `gradient_coherence` adds N backward passes (do it in
+  the same pass while the model + cohort are loaded).
+- Aggregate to one row per cohort.
+**Output:** `results/<domain>_signals.jsonl`. This is the **predictor** side
+of the regression. Computed *before any training* — that's the whole point,
+the metric must be cheap.
+
+### Phase 2 — Train & measure lift (GPU ON, ~4 h per track)
+**Goal:** get the ground-truth `lift` for each cohort — the thing the metric
+is trying to predict.
+1. **Pre-train eval** — base model accuracy on a fixed held-out test slice
+   (greedy decoding, deterministic). Cache `acc_before`. ~15 min.
+2. **One GRPO run per cohort** — identical config across cohorts so *cohort
+   is the only variable*. 200–300 steps, `num_generations=8`, in `tmux`.
+3. **Post-train eval** — same test slice, each checkpoint → `acc_after`.
+4. `lift = acc_after − acc_before` per cohort.
+**Output:** `results/<domain>_summary.jsonl` (signals + lift, per cohort).
+**De-noising:** if budget allows (it does — see logistics), run each cohort
+2–3× with different seeds and report mean lift. With few cohorts, noise is
+the enemy; seed repeats are the cheapest defense.
+
+### Phase 3 — Analysis (OFFLINE, ~1 h)
+**Goal:** quantify how well each metric predicts lift, honestly.
+- Concatenate both domains' summaries into one dataframe.
+- For each candidate metric: fit metric → lift, **leave-one-out CV**, report
+  **Spearman rank correlation** (with n≈3–6 cohorts, R² is noise — don't use
+  it).
+- Compute each metric's **compute cost** (seconds to produce) for the
+  frontier.
+**Output:** a small table: metric, cross-domain ρ, cost.
+
+### Phase 4 — Dashboard & writeup (OFFLINE, ~2 h)
+**Goal:** make the result land in 60 seconds. See `DASHBOARD.md`.
+- **Money plot:** predicted vs actual lift, math + code on the same axes,
+  y=x line, metric-selector dropdown.
+- **Pareto plot:** metric cost (x, log) vs predictive ρ (y) — the brief asks
+  for this *by name*.
+- Three paragraphs of rationale (Appendix A) + one sentence of honesty about
+  small n.
+**Output:** the demo.
+
+---
+
+## Parallel execution schedule (who runs what, when)
+
+Two people, two own-$100 A100 boxes, running the same phases on different
+domains. The only hard dependency is the **Phase-0 schema sync**; after that
+the lanes are independent until they rejoin for analysis. ⚙️ = GPU on,
+💻 = laptop/offline.
 
 ```
-{ "domain": "math" | "code",
-  "cohort": str,
-  "n_tasks": int,
-  "signals": { "self_consistency_gap": float, "reward_var": float,
-               "prompt_ppl": float, ... },
-  "lift": float }      # acc_after - acc_before
+        LANE A — Math (you)                  LANE B — Code (teammate)
+        ───────────────────                  ────────────────────────
+T0   💻 SYNC ① lock JSON schema (Appendix C) + cohort source list + eval slice
+        │  (do this together, 30–45 min — nothing else starts until it's done)
+        ▼                                          ▼
+T1   💻 build math cohorts                    💻 build code cohorts + write the
+        (GSM8K/MATH/synthetic),                  sandbox unit-test verifier
+        write slice_cohorts.py                    (the one genuinely new piece)
+        + generate synthetic via Claude           + adapt extract_signals.py
+        ▼                                          ▼
+T2   💻 SYNC ② quick cross-check: both extract_signals.py emit identical
+        signal keys on a 5-task dry run (no GPU). Catches schema drift early.
+        ▼                                          ▼
+T3   ⚙️ BOX UP. Phase 1 signals             ⚙️ BOX UP. Phase 1 signals
+        (~1.5h) → push *_signals.jsonl           (~1.5h) → push *_signals.jsonl
+        ▼                                          ▼
+T4   ⚙️ Phase 2: pre-eval → 5 GRPO          ⚙️ Phase 2: pre-eval → 5 GRPO
+        runs in tmux → post-eval                  runs in tmux → post-eval
+        (~4h, box stays up the whole time)        (~4h)
+        push *_summary.jsonl, BOX DOWN            push *_summary.jsonl, BOX DOWN
+        ▼                                          ▼
+T5   💻 ───────────── SYNC ③ both summaries in results/ ─────────────
+        whoever is free first builds analysis + dashboard (GPU off),
+        consumes BOTH domains, produces scatter + Pareto plot
+        ▼
+T6   💻 writeup together
 ```
 
-Agree this JSON contract FIRST. Then the two of us can build independently
-and the analysis just concatenates both files. Metric definitions
-(self-consistency gap, reward variance) are **domain-agnostic** — they only
-depend on the rollout reward, not on whether it came from regex or unit
-tests. So the teammate reuses our `extract_signals.py` logic and only
-swaps the verifier + dataset loader.
+**Within a lane, the golden rule is "one box-up does everything."** Don't
+boot the GPU for Phase 1, shut down, boot again for Phase 2 — that wastes
+boot time and risk. Boot once at T3, run signals, roll straight into training
+and eval at T4, then shut down at the end of T4. The box is up for one
+continuous ~5.5h block per person.
 
-### What's genuinely different for code (teammate's TODO)
-1. **Sandbox executor** — run generated code against test cases in a
-   subprocess with a hard timeout + no network. This is the only real new
-   infra. Everything else mirrors the math track.
-2. **Prompt format** — code completion / function-signature style, not
-   `<answer>` tags.
-3. **Reward** — continuous (fraction of tests passed) rather than binary.
-   Nice bonus: continuous reward gives *richer* `reward_var` signal.
+**Inside Phase 2, run the 5 GRPO+eval jobs back-to-back in one tmux
+session** (a simple bash `for` loop over cohort files). Detach, let it grind,
+reattach to check. Don't babysit each run.
 
-### Division of GPU time
-**We each have our own $100 Prime Intellect plan** — so just run two
-separate A100s, fully in parallel. No contention, no OOM risk, no
-time-sharing. Each track uses ~$12–15 of its own pool, leaving each of us
-~$85 of headroom for retries and the v2 cohorts. Parallel wall-clock means
-both tracks can finish in the same ~8-hour window instead of back-to-back.
+**Sync points are the only coupling:**
+- **SYNC ① (T0, blocking):** schema + cohort sources + eval slice. If this is
+  sloppy, everything downstream misaligns. Spend the full 45 min here.
+- **SYNC ② (T2, cheap insurance):** 5-task dry run proving both tracks emit
+  identical signal keys. Catches drift before you've spent any GPU money.
+- **SYNC ③ (T5, rejoin):** both summaries landed → analysis can run.
+
+**If one lane is faster** (math will be — code's sandbox verifier is extra
+work): the fast lane starts the shared analysis script against its own
+summary + a stub for the other domain, so it's ready the moment Lane B's
+summary lands. No idle waiting.
+
+## Execution logistics
+
+- **GPU discipline.** Phases 1–2 only. Everything else runs on your laptop
+  with the box **off**. If you're about to spend >5 min editing code with the
+  GPU idle, shut it down. Batch GPU work: boot → pull → run the whole phase
+  in `tmux` → push results → stop the box. Full runbook in
+  `PRIME_INTELLECT.md`.
+- **Budget.** We each have our own **$100** plan → run two A100s fully in
+  parallel, no time-sharing. Each track costs ~$15. ~$85 headroom each goes
+  to (in priority): seed repeats → more cohort *sources* (extra synthetic
+  quality levels, another sibling dataset) → longer training. Past ~6–8
+  cohorts you're limited by the regression's point count, not money.
+- **Never lose work.** Train inside `tmux`; push `results/` to the repo
+  after every phase; let huge checkpoints die with the instance (we only
+  need the `lift` number, not the weights). `.gitignore` already blocks
+  checkpoints.
 
 ---
 
-## What we have working
-- [x] GRPO baseline trains (50-step smoke test, gradients flow, rewards non-zero).
-- [x] 5 cohorts sliced by `(steps × qlen)` median split + a random control.
-- [x] Signal extractor running: `prompt_ppl`, `reward_mean`, `reward_var`,
-      `format_rate`, `mean_length`.
+## Definition of done
 
-## What we still need
-- [ ] Held-out **eval harness** — fixed GSM8K test slice, deterministic
-      (greedy or temp=0), reports `acc_before` and `acc_after` per cohort.
-      This is the dependent variable; without it nothing else matters.
-- [ ] **Real cohort training runs** — 200–300 steps each, same config,
-      `num_generations=8`. ~80 min/cohort × 5 cohorts ≈ 7 GPU-hours.
-- [ ] **Metric → lift regression** — fit on 4 cohorts, leave-one-out.
-- [ ] **Scatter plot** of predicted vs actual lift. This is the money slide.
+A one-pager with:
+1. **The scatter** — predicted vs actual lift, both domains, points hugging
+   the diagonal.
+2. **The Pareto plot** — which metrics break the cost-quality frontier.
+3. **The rationale** — for whichever candidate won the bake-off, why its
+   mechanism is domain-independent (hence transfers math → code), and an
+   honest note on which candidates' stories the data did *not* support.
+4. **The honesty line** — "n cohorts per domain; this is a hypothesis, not a
+   conclusion." Beats fake p-values.
 
 ---
+---
 
-## The metric ladder (cheap → expensive)
+# Appendix A — Candidate metric basket & rationale
 
-We are explicitly trying to span the Pareto frontier, not crowd one corner.
+This is a **bake-off**, not a ladder with a pre-chosen winner. We compute all
+of these and let the cross-domain regression decide. Build order is
+"sharp but safe": baselines + sampling headroom first (guaranteed
+deliverable), gradient coherence as high-ceiling upside.
+
+Ordered cheap → expensive so the Pareto plot has a real spread.
 
 | Tier | Metric | Cost | Why it should predict lift |
 |---|---|---|---|
-| **Free** | `reasoning_steps` (count of `<<...>>`) | 0 | Difficulty proxy. Mid-difficulty = most learnable. |
-| **Free** | `qlen`, `num_count` | 0 | Distractor / complexity proxy. |
-| **Cheap (1 fwd)** | `prompt_ppl` | 1 forward pass | Tasks the model finds "novel" but not alien. |
-| **Cheap (1 fwd)** | `gold_token_surprise` *(TODO)* | 1 forward pass on gold solution | Sum of `(1 - p_model[gold_tok])`. Measures the model's "headroom" on this exact answer. |
-| **Med (N rollouts)** | `reward_var` | N generations | **Most mechanistically grounded.** GRPO's gradient ∝ within-group reward std. Zero variance = zero gradient. This *must* correlate or our understanding of GRPO is wrong. |
-| **Med (N rollouts)** | `intermediate_frac` | N generations | Fraction of tasks with 0<pass-rate<1. The "Goldilocks pool." |
-| **Med (N rollouts)** | `self_consistency_gap` *(TODO)* | N generations | `accuracy(majority-vote-of-N) − accuracy(greedy)`. Big gap = "model knows but can't commit" = ideal RL target. |
-| **Med (N rollouts)** | `rollout_diversity` *(TODO)* | N generations + 1 embed | Mean pairwise embedding distance between completions. Captures *path* diversity, not just outcome. |
-| **Expensive (grad probe)** | `learnability` *(stretch)* | 1 SGD step + eval | One-step RHO-loss: does fine-tuning on this task drop loss on a held-out slice? Ground-truth-ish predictor; expensive to compute. |
+| **Free** | `reasoning_steps`, `qlen`, `num_count` | 0 | Structural difficulty proxies. Expected weak — the "cheap floor" we beat. |
+| **Cheap (1 fwd)** | `prompt_ppl` | 1 forward | Novel-but-not-alien tasks. Mid perplexity = headroom without being OOD. |
+| **Med (N rollouts)** | `reward_var` | N gens | Baseline. GRPO gradient ∝ within-group reward std; zero var → zero gradient. The mechanistic floor any good metric must clear. |
+| **Med (N rollouts)** | `intermediate_frac`, `self_consistency_gap` | N gens (reuse) | Outcome-uncertainty baselines. Goldilocks pass-rate / majority-vs-greedy gap. |
+| **★ Med (N rollouts)** | **`sampling_headroom` = pass@N − pass@1** | N gens (reuse) | **Novel candidate, safe anchor.** RL converts *latent* capability (reachable when sampled lucky) into *reliable* capability. Sweet spot = low pass@1, high pass@N. Sharper framing than self-consistency gap. |
+| **★ Med (N backward)** | **`gradient_coherence`** (dataset-level) | N backward passes (sketchable → cheaper) | **Novel candidate, high ceiling.** `‖mean task-gradient‖ / mean‖task-gradient‖` across the cohort. Measures whether tasks pull the model the *same* way — inter-task synergy that NO per-task average can see. Connects to influence functions / TracIn / RHO-loss. Random-projection sketching pushes it toward the cheap corner → a candidate to "break the frontier." |
+| **○ Med (N rollouts + embed)** | `reward_separability` *(if time)* | N gens + 1 embed | Embed correct vs incorrect rollouts; measure linear separability. RL-as-BC can only reinforce what's representationally coherent. |
+| **Expensive (grad probe)** | `learnability` *(stretch)* | 1 SGD step + eval | One-step RHO-loss: does training on this task drop held-out loss? Near-ground-truth but ~as costly as the RL itself — the frontier's expensive corner, useful as an oracle to compare cheap metrics against. |
 
-The pitch to the judges: the medium tier should dominate the frontier.
-Cheap signals are too coarse; the expensive learnability probe approaches the
-true answer but costs ~as much as just running the RL. The sweet spot is
-`reward_var` + `self_consistency_gap` — they pay for themselves in 5 rollouts.
+★ = the two novel candidates we're betting on. ○ = backlog.
 
----
+**What we report:** the empirical winner across both domains, *and* the
+candidates whose first-principles story failed — negative results are part of
+the contribution.
 
-## Cohort design (see "Conservative scope" below for v1 cut)
+## Appendix A2 — Every low-hanging signal (log them all)
 
-The full ambition was 5 cohorts varying on different axes (difficulty,
-length, synthetic). v1 ships just the 3 difficulty cohorts; v2 adds the
-others *if and only if* v1 ran clean.
+Principle: if a signal is free-or-cheap and *might* correlate, log it. They
+cost almost nothing once the rollouts are in hand, and the ones that fail
+become our "we understand correlation vs. causation" negative results. All of
+these get written per-task in `extract_signals.py` and aggregated (mean + std
++ relevant fractions) to the cohort row.
 
-**Why varied axes matter (the v2 story):** a metric that predicts lift
-only within a difficulty sweep is just a difficulty proxy. A metric that
-predicts across difficulty + length + synthesis is capturing real
-learnability. Save this argument for v2 / writeup.
+**Tier 0 — Free, model-agnostic (no model, just the text)**
+- `qlen_tokens`, `qlen_chars`, `qlen_words` — question length, 3 ways.
+- `reasoning_steps` — count of `<<…>>` calc annotations (math) / reference
+  solution line count (code).
+- `num_count` — numbers in the question; `operator_count` — +−×÷ etc.
+- `gold_answer_magnitude` — size of the target number (math).
+- `gold_solution_len` — length of the reference solution.
+- `type_token_ratio` — lexical diversity of the question.
+- `question_entropy` — unigram entropy of the prompt text.
+- `has_units` / `has_percent` / `has_fraction` — surface feature flags.
 
-**Stats honesty:** with 3–5 cohorts, R² is noise. Report **Spearman rank
-correlation with leave-one-out CV**.
+**Tier 1 — Cheap, 1 forward pass (no generation)**
+- `prompt_ppl` — perplexity of the question.
+- `gold_solution_ppl` — perplexity of the reference solution (teacher-forced).
+- `gold_token_surprise` — Σ`(1 − p_model[gold_tok])`, the CE budget RL fights.
+- `first_token_entropy` — model's uncertainty at the first answer token.
 
----
+**Tier 2 — Medium, reuse the N rollouts you already generate**
+- `reward_mean` (pass@1-ish), `reward_var`, `reward_std`.
+- `pass@1`, `pass@k` for k∈{2,4,N}; `sampling_headroom` = pass@N − pass@1.
+- `self_consistency_gap` — majority-vote acc − greedy acc.
+- `intermediate_frac` — fraction of tasks with 0 < pass-rate < 1.
+- `answer_entropy` — entropy over the *final answers* across rollouts
+  (outcome diversity).
+- `completion_len_mean` / `_var` — verbosity and its spread.
+- `distinct_rollout_frac` — fraction of unique completions (path diversity,
+  cheap string-dedup version).
+- `format_rate` — fraction obeying the answer format.
 
-## Out-of-the-box ideas — pick 1, maybe 2
+**Tier 2.5 — Medium + one embedding pass (local sentence-transformer)**
+- `cohort_diversity` — mean pairwise embedding distance within the cohort.
+- `redundancy` — fraction of tasks with a near-duplicate neighbor.
+- `pca_effective_rank` — participation ratio of the embedding matrix.
+- `coverage` — mean similarity of cohort tasks to the eval set (the
+  distribution-match control from the training-data section).
+- `rollout_diversity` — mean pairwise distance between a task's completions
+  (path diversity, embedding version).
 
-Brainstorm, ranked by "judge would say 'huh, interesting'":
+**Tier 3 — Novel candidates (the ones we're betting on)**
+- `gradient_coherence` — `‖mean task-grad‖ / mean‖task-grad‖` over the cohort.
+- `reward_separability` — linear separability of correct vs. incorrect
+  rollout embeddings.
 
-1. **Self-consistency gap as a learnability oracle.**
-   Pass-rate(majority-of-8) minus pass-rate(greedy). When this is large, the
-   model *can* reach the answer with luck but doesn't consistently — exactly
-   the gap RL closes. I'd bet this beats raw reward_var. Cheap: reuse the same
-   rollouts.
+Most teams stop at Tier 0–2. Tiers 2.5–3 are where we differentiate. Logging
+Tier 0–2 is essentially free, so there's no reason not to — the regression
+sorts out which ones matter.
 
-2. **Gold-trajectory surprise.**
-   Teacher-force the gold solution token-by-token, sum `(1 - p)`. Captures
-   "how much novel info does this answer contain for the model" without ever
-   generating. One forward pass per task. Predicted to correlate with lift
-   because it's literally the cross-entropy budget RL is fighting.
+# Appendix B — Idea backlog (only if time)
 
-3. **The "mixed cohort beats pure cohort" hypothesis.**
-   Curriculum lit says diversity > purity for transfer. Train one cohort that
-   is 60% medium / 40% mixed-hard. If it beats all four pure cohorts, that's
-   a clean narrative win.
+1. **Embedding diversity / PCA effective-rank** — dataset-level geometry.
+   Cheap (one local sentence-transformer pass), model-agnostic. Anchors the
+   *cheap* end of the Pareto plot opposite the behavioral metrics. Also gives
+   a 2D PCA scatter that visually sells cohort separation. Caveat: diversity
+   correlates with difficulty — may not separate at small n; report as a
+   limitation.
+2. **Gold-trajectory surprise** — see Appendix A; one forward pass, no
+   generation.
+3. **Synthetic cohort (Claude-generated)** — a data-quality probe: does the
+   metric still predict lift on synthetic GSM8K-style problems? Uses
+   Anthropic credits, not GPU.
+4. **Negative result on purpose** — show raw token length *fails* to predict
+   lift. Demonstrates we understand correlation vs causation.
 
-4. **Logit margin on the answer-emitting token.**
-   When the model is about to emit the final number, what is `top-1 − top-2`?
-   Low margin = uncertain = high learning potential. One generation per task,
-   inspect logits at the answer position. Niche but cheap and novel.
+# Appendix C — Shared cohort-summary schema
 
-5. **Negative-result honesty.**
-   Pick one metric we *expect* to fail (e.g., raw token length) and report it
-   failing. Shows we understand causation vs correlation. Judges love this.
+Both tracks emit this, one row per cohort. The analysis concatenates them.
 
-6. **Cost on the X-axis.**
-   Literally plot every metric on (compute-seconds, predictive Spearman ρ)
-   axes — that's the Pareto frontier they explicitly asked about. Most teams
-   will skip this and just hand-wave; we shouldn't.
+```json
+{
+  "domain": "math",            // or "code"
+  "cohort": "medium_pass",
+  "n_tasks": 256,
+  "signals": {
+    "sampling_headroom": 0.34,
+    "gradient_coherence": 0.41,
+    "self_consistency_gap": 0.18,
+    "reward_var": 0.21,
+    "prompt_ppl": 7.9,
+    "reward_mean": 0.45,
+    "intermediate_frac": 0.62
+  },
+  "acc_before": 0.41,
+  "acc_after": 0.52,
+  "lift": 0.11
+}
+```
 
-**LOCKED: hero metric = self-consistency gap (#1).** Plus baselines we
-already compute (`reward_var`, `prompt_ppl`) for the Pareto plot (#6).
-Skip #2 unless we have GPU time left over. Skip #3, #4, #5 — scope discipline.
+Rules: signal keys identical across domains; `lift = acc_after − acc_before`;
+one file per domain (`results/math_summary.jsonl`, `results/code_summary.jsonl`).
 
----
+# Appendix D — Risks
 
-## Risks to watch
-
-- **Lift is noisy at 200 steps.** Run each cohort twice with different seeds
-  if budget allows; report mean lift.
-- **Reward hacking on `<answer>` tag.** A model can game format reward
-  without solving math. Already mitigated by weighting correctness 5× format,
-  but worth eyeballing some final completions.
-- **vLLM rollout might OOM on a single GPU.** If it does, fall back to HF
-  generate (slower but works). Don't burn 2 hours debugging vLLM.
-- **5 cohorts → R² is noise.** Pre-commit to reporting Spearman ρ with LOO.
-
----
-
-## GPU discipline — when to bring the box up
-
-You're on a single A100 with metered credits. Treat GPU time as the
-scarce resource. Everything that doesn't need a GPU happens locally
-(Windows box) while the GPU is **down**.
-
-### Local-only work (GPU OFF)
-- Editing scripts (this is what you're doing right now).
-- Reading dataset rows, designing prompts, writing Claude synthetic-data
-  prompts, writing regression + plot code on dummy data.
-- Drafting the writeup against placeholder numbers.
-- Anything involving me — I cost nothing GPU-wise.
-
-### GPU-required work (bring it UP only for these)
-1. **Signal extraction pass** (~1.5 hr) — `extract_signals.py` on all
-   cohorts in one shot. Already in progress; let it finish.
-2. **Pre-training eval** (~15 min) — base-model accuracy on the test slice.
-   Cache the number.
-3. **Training runs** (~1 hr × N cohorts) — back-to-back in one session,
-   `tmux` so the laptop can sleep.
-4. **Post-training eval** (~15 min × N) — same harness, on each saved
-   checkpoint.
-
-**Rule of thumb:** if you're about to spend >5 minutes editing code with
-the GPU idle, shut the box down. Bring it back up only when you have a
-batch of work queued.
-
-## Conservative scope (driving + ~real-world day)
-
-Trim from 5 cohorts to **3 cohorts** for v1. Ship a complete pipeline
-end-to-end before considering expansion.
-
-| Cohort (v1) | Selection rule |
-|---|---|
-| `easy_pass`    | pass-rate > 0.7 |
-| `medium_pass`  | pass-rate ∈ [0.3, 0.7] |
-| `hard_pass`    | pass-rate < 0.3 |
-
-Add `long_context` and `synthetic_claude` only if v1 runs clean and you
-still have budget. 3 cohorts × ~1 hr training = ~3 GPU-hours, leaves
-plenty of cushion on $100 of credits.
-
-### Time budget (revised)
-
-| Block | Time | GPU? |
-|---|---|---|
-| Finish signal extraction (already running) | 1.5 h | ✅ |
-| Write eval harness (offline, against fake data) | 0.5 h | ❌ |
-| Re-cohort by pass-rate (offline script) | 0.2 h | ❌ |
-| Pre-train eval on base model | 0.25 h | ✅ |
-| 3 GRPO training runs, 200 steps, num_gen=8, tmux | 3 h | ✅ |
-| Post-train eval × 3 checkpoints | 0.5 h | ✅ |
-| Regression + Pareto plot (offline) | 1 h | ❌ |
-| Writeup (offline) | 1.5 h | ❌ |
-| **Total wall** | **~8.5 h** | **~5.5 GPU-h** |
-
-A100 cost on Prime Intellect ≈ $1.5–2/hr → ~$10 of credit used. Huge
-headroom for retries.
-
----
-
-## What "winning" looks like
-
-A 1-page writeup with:
-1. One scatter: predicted lift vs actual lift, **math and code points on the
-   same axes**. If a metric's points line up across both domains, that single
-   plot makes the whole argument.
-2. One Pareto plot: compute-cost vs predictive ρ for each metric.
-3. Three paragraphs of *reasoning* explaining why `self_consistency_gap` and
-   `reward_var` beat the cheaper metrics — and why the mechanism (GRPO
-   gradient ∝ within-group reward variance) is *domain-independent*, which is
-   why it should and does transfer from math to code.
-4. One sentence of honesty: "n cohorts per domain, take this as a hypothesis
-   not a conclusion." Judges respect that more than fake p-values.
-
-The differentiator: most teams will show one correlation on one benchmark.
-We show the *same* cheap metric predicting lift across two modalities. That's
-the difference between "a correlation" and "a property of learnable data."
+- **Lift is noisy at 200 steps.** Mitigate with seed repeats; report mean.
+- **Reward hacking** on format tokens — weight correctness ≫ format, eyeball
+  final completions.
+- **vLLM OOM** on a single GPU — fall back to HF `generate`; don't burn hours
+  debugging vLLM.
+- **Small n** — pre-commit to Spearman + LOO, never R².
+- **Schema drift between tracks** — the single biggest coordination risk.
+  Lock Appendix C before writing track code.
