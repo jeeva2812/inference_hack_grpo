@@ -27,9 +27,22 @@ train_eval () {  # $1 = cohort name
 
 echo "######## PHASE 2 START $(date) | steps=$STEPS ########"
 
-# 0. base headroom check (eyeball the printed accuracy)
+# 0. base headroom check — auto-abort if too strong (null-lift risk)
 echo "-------- base eval (headroom check) $(date) --------"
 python3 eval_math.py --label base --n 200
+python3 - <<'PY' || exit 1
+import json, sys
+recs = [json.loads(l) for l in open('results/math_eval.jsonl') if l.strip()]
+base = next((r['accuracy'] for r in recs if r['label'] == 'base'), None)
+print(f">>>> base accuracy = {base}")
+if base is None:
+    print("!!!! no base record found; aborting"); sys.exit(1)
+if base > 0.78:
+    print(f"!!!! base {base} > 0.78 — too little headroom, lift will be ~null.")
+    print("     Set MODEL_ID = 'Qwen/Qwen2.5-0.5B-Instruct' in math_common.py and rerun.")
+    sys.exit(1)
+print(">>>> headroom OK, proceeding.")
+PY
 
 # 1. fail-fast gate: full pipeline on one cohort
 if ! train_eval benchmark_slice; then
