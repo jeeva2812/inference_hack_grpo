@@ -1,5 +1,5 @@
 """
-make_synthetic.py — build synthetic / degraded cohorts from GSM8K, ZERO TOKENS.
+make_synthetic_math.py — build synthetic / degraded cohorts from GSM8K, ZERO TOKENS.
 
 Why programmatic instead of Claude: for the "low-quality data" cohorts we want
 to control *exactly how* the data is broken, so the "does our metric flag bad
@@ -16,13 +16,13 @@ Corruption modes (each keeps the QUESTION real, breaks the supervision):
   trivial        : auto-generated trivial arithmetic ("What is a+b?"). A
                    near-zero-difficulty floor cohort.
 
-Output: cohorts/<name>.jsonl, same schema as slice_cohorts.py plus a
-`corruption` field, so extract_signals.py / training consume it unchanged.
+Output: cohorts/<name>.jsonl, same schema as slice_cohorts_math.py plus a
+`corruption` field, so extract_signals_math.py / training consume it unchanged.
 
 Usage:
-  python make_synthetic.py --mode wrong_answer   --out synthetic_degraded --n 256
-  python make_synthetic.py --mode mismatched     --out random_control     --n 256
-  python make_synthetic.py --mode trivial        --out trivial_floor      --n 256
+  python make_synthetic_math.py --mode wrong_answer   --out synthetic_degraded --n 256
+  python make_synthetic_math.py --mode mismatched     --out random_control     --n 256
+  python make_synthetic_math.py --mode trivial        --out trivial_floor      --n 256
 """
 
 import argparse

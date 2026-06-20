@@ -32,12 +32,12 @@ One-time, on the box:
 ```bash
 wandb login                              # paste your API key
 ```
-Then enable it per run via env vars (no code edits — see grpo_baseline.py):
+Then enable it per run via env vars (no code edits — see grpo_math.py):
 ```bash
 export REPORT_TO=wandb
 export WANDB_PROJECT=grpo-cohorts
 export RUN_NAME=math_medium_pass         # change per cohort so runs are labelled
-python grpo_baseline.py
+python grpo_math.py
 ```
 Leaving `REPORT_TO` unset = terminal-only (safe default, never breaks).
 
@@ -47,7 +47,7 @@ sleeps or wifi drops, the SSH session dies and takes the job with it.
 
 ```bash
 tmux new -s train          # start a named session
-# ... launch python grpo_baseline.py inside it ...
+# ... launch python grpo_math.py inside it ...
 # detach with: Ctrl-b then d   (job keeps running)
 tmux attach -t train       # reattach later, even after reconnecting SSH
 ```

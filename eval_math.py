@@ -6,7 +6,7 @@ lift = acc_after - acc_before.
 Design rules that make lift comparable across cohorts:
   - SAME test slice every time (first --n of the test split, deterministic).
   - GREEDY decoding (do_sample=False) — no sampling noise in the measurement.
-  - identical prompt + answer-extraction as training (grpo_baseline.py).
+  - identical prompt + answer-extraction as training (grpo_math.py).
 
 Each run appends one record to results/<domain>_eval.jsonl:
   {"label": "base" | "<cohort>", "model": <path>, "n": 200, "accuracy": 0.41}
@@ -14,13 +14,13 @@ If a "base" record already exists, the run also prints lift vs base.
 
 Usage:
   # baseline (before any training)
-  python eval.py --model Qwen/Qwen2.5-Math-1.5B --label base --n 200
+  python eval_math.py --model Qwen/Qwen2.5-Math-1.5B --label base --n 200
 
   # after training a cohort (point --model at the checkpoint dir)
-  python eval.py --model outputs/math_medium_pass --label medium_pass --n 200
+  python eval_math.py --model outputs/math_medium_pass --label medium_pass --n 200
 
   # quick smoke test (tiny slice)
-  python eval.py --n 8
+  python eval_math.py --n 8
 """
 
 import argparse

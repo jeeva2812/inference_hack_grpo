@@ -19,9 +19,9 @@ cohorts/summary.jsonl        — one row per cohort with aggregate stats.
 
 Usage
 -----
-python extract_signals.py                        # all files in cohorts/
-python extract_signals.py --cohort short_easy    # single cohort by name
-python extract_signals.py --max_tasks 50         # cap for quick debugging
+python extract_signals_math.py                        # all files in cohorts/
+python extract_signals_math.py --cohort short_easy    # single cohort by name
+python extract_signals_math.py --max_tasks 50         # cap for quick debugging
 """
 
 import argparse

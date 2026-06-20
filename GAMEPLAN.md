@@ -102,8 +102,10 @@ control variable in the regression.
 
 ## Roles & ownership
 
-- **Track A (math)** — this repo, owned by me. `grpo_baseline.py`,
-  `slice_cohorts.py`, `extract_signals.py` already exist.
+- **Track A (math)** — this repo, owned by me. `grpo_math.py`,
+  `slice_cohorts_math.py`, `extract_signals_math.py`, `eval_math.py`,
+  `make_synthetic_math.py` already exist. (Shared, generic: `signals.py`,
+  `plots.py`, `test_pipeline.py`.)
 - **Track B (code)** — teammate. Forks the same three scripts, swaps the
   dataset loader + verifier (the sandbox executor is the only genuinely new
   piece), keeps everything else identical.
@@ -133,7 +135,8 @@ tracks can run independently.
   `random_control`. This deliberately spans the quality range so lift has
   spread to predict.
 - Fix the eval test slice now (same one used before & after, every cohort).
-- Each track writes its `slice_cohorts.py` equivalent → `cohorts/*.jsonl`.
+- Each track writes its own cohort-slicing script (math: `slice_cohorts_math.py`)
+  → `cohorts/*.jsonl`.
   Synthetic cohorts use **Anthropic credits, not GPU** — generate them in
   this offline phase.
 **Output:** cohort files on disk, fixed eval slice, agreed schema. No GPU yet.
@@ -141,7 +144,8 @@ tracks can run independently.
 ### Phase 1 — Signals (GPU ON, ~1.5 h per track)
 **Goal:** compute the cheap, training-free metrics that we'll later test as
 lift predictors.
-- Run `extract_signals.py` over every cohort: the full candidate basket
+- Run the signal extractor (math: `extract_signals_math.py`) over every
+  cohort: the full candidate basket
   (Appendix A). `prompt_ppl`, `reward_var`, `intermediate_frac`,
   `self_consistency_gap`, and `sampling_headroom` all reuse the same N
   rollouts — near-free. `gradient_coherence` adds N backward passes (do it in
@@ -202,10 +206,10 @@ T0   💻 SYNC ① lock JSON schema (Appendix C) + cohort source list + eval sli
         ▼                                          ▼
 T1   💻 build math cohorts                    💻 build code cohorts + write the
         (GSM8K/MATH/synthetic),                  sandbox unit-test verifier
-        write slice_cohorts.py                    (the one genuinely new piece)
-        + generate synthetic via Claude           + adapt extract_signals.py
+        slice_cohorts_math.py +                   (the one genuinely new piece)
+        make_synthetic_math.py                    + adapt signal extractor
         ▼                                          ▼
-T2   💻 SYNC ② quick cross-check: both extract_signals.py emit identical
+T2   💻 SYNC ② quick cross-check: both signal extractors emit identical
         signal keys on a 5-task dry run (no GPU). Catches schema drift early.
         ▼                                          ▼
 T3   ⚙️ BOX UP. Phase 1 signals             ⚙️ BOX UP. Phase 1 signals
@@ -310,7 +314,8 @@ the contribution.
 Principle: if a signal is free-or-cheap and *might* correlate, log it. They
 cost almost nothing once the rollouts are in hand, and the ones that fail
 become our "we understand correlation vs. causation" negative results. All of
-these get written per-task in `extract_signals.py` and aggregated (mean + std
+these get written per-task in the signal extractor (math:
+`extract_signals_math.py`) and aggregated (mean + std
 + relevant fractions) to the cohort row.
 
 **Tier 0 — Free, model-agnostic (no model, just the text)**

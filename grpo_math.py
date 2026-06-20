@@ -1,5 +1,6 @@
 """
-GRPO baseline: Qwen2.5-Math-1.5B on GSM8K (50 steps smoke test).
+grpo_math.py — GRPO training, MATH track: Qwen2.5-Math-1.5B on GSM8K.
+(50-step smoke default; bump max_steps for real cohort runs.)
 
 Experiment tracking: set env vars to stream metrics to Weights & Biases
 (survives the box dying, lets the team watch from one dashboard):
