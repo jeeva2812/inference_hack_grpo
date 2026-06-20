@@ -93,8 +93,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cohort", default=None,
                     help="cohort name in cohorts/<name>.jsonl; omit for vanilla GSM8K (smoke)")
-    ap.add_argument("--max_steps", type=int, default=50,
-                    help="bump to ~200-300 for real Phase-2 cohort runs")
+    ap.add_argument("--max_steps", type=int, default=120,
+                    help="120 for Phase-2 cohort runs (~32s/step × 5 cohorts ≈ 6h)")
     ap.add_argument("--seed", type=int, default=0,
                     help="vary across repeat runs of the same cohort to de-noise lift")
     args = ap.parse_args()
