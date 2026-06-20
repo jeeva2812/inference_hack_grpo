@@ -29,10 +29,14 @@
   test_pipeline.py` → 10/10. Run after editing signals/synthetic/plots.
 - `grpo_baseline.py` — now W&B-aware via env vars (REPORT_TO / WANDB_PROJECT /
   RUN_NAME), defaults to terminal-only so it never breaks.
+- `eval.py` — **the dependent variable.** Greedy, deterministic accuracy on a
+  fixed GSM8K test slice. Run before (`--label base`) and after each cohort
+  (`--model <checkpoint> --label <cohort>`); appends to
+  `results/math_eval.jsonl` and prints lift vs base. Heavy imports are lazy so
+  extraction logic is unit-tested offline. Smoke: `python eval.py --n 8`.
 
 ## Next (in order)
-1. **Eval harness** — fixed benchmark test slice, greedy decoding, returns
-   accuracy. Called before & after each cohort run. (Offline-buildable.)
+1. ~~Eval harness~~ ✅ DONE (`eval.py`).
 2. **Rebuild cohorts** as source-diverse, size-matched (see GAMEPLAN
    "Training data vs. eval benchmark"): benchmark_slice / harder_sibling /
    synthetic_good / synthetic_degraded / random_control.

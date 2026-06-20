@@ -83,6 +83,24 @@ def test_synthetic_wrong_answer_changes_gold():
     assert "####" in new                      # structure preserved
 
 
+# ── eval.py (pure extraction logic, no GPU) ──────────────────────────────────
+
+def test_eval_extracts_gold_and_pred():
+    import eval as ev
+    assert ev.extract_gold("blah blah\n#### 1,234") == "1234"
+    assert ev.extract_pred("reasoning... <answer>42</answer>") == "42"
+    # fallback to last number when no answer tag
+    assert ev.extract_pred("so the total is 17 dollars") == "17"
+
+
+def test_eval_correctness_tolerant():
+    import eval as ev
+    assert ev.is_correct("42", "42")
+    assert ev.is_correct("42.0", "42")
+    assert not ev.is_correct("41", "42")
+    assert not ev.is_correct("", "42")          # no prediction -> wrong, no crash
+
+
 # ── plots.py ─────────────────────────────────────────────────────────────────
 
 def test_spearman_monotonic():
