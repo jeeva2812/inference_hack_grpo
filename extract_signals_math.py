@@ -56,49 +56,56 @@ def prompt_perplexity(prompt_ids: torch.Tensor, model, tokenizer) -> float:
 
 
 @torch.no_grad()
-def rollout_signals(prompt_ids: torch.Tensor, gold: str, model, tokenizer) -> dict:
-    """Generate N_ROLLOUTS completions and compute reward stats."""
-    prompt_len = prompt_ids.shape[0]
-    ids = prompt_ids.unsqueeze(0).to(model.device)
-    mask = (ids != tokenizer.pad_token_id).long()
+def rollout_signals_batch(rows: list, model, tokenizer) -> list:
+    """Generate N_ROLLOUTS completions for a *batch* of tasks in one call.
+
+    With batch=1 the A100 sits idle (decode is latency-bound), so we pack many
+    prompts per generate. Requires tokenizer.padding_side='left' so the prompt
+    length is uniform and out[:, prompt_len:] is the clean completion slice.
+    Output ordering is batch-major: prompt0's N returns, then prompt1's, ...
+    -> reshape to (B, N, gen_len).
+    """
+    prompts = [build_prompt(r["question"], tokenizer) for r in rows]
+    enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+    prompt_len = enc.input_ids.shape[1]
 
     outputs = model.generate(
-        ids,
-        attention_mask=mask,
+        **enc,
         do_sample=True,
         temperature=ROLLOUT_TEMP,
         max_new_tokens=MAX_NEW_TOKENS,
         num_return_sequences=N_ROLLOUTS,
         pad_token_id=tokenizer.pad_token_id,
     )
+    gen = outputs[:, prompt_len:].view(len(rows), N_ROLLOUTS, -1)
 
-    rewards = []
-    fmt_hits = 0
-    lengths = []
+    out = []
+    for i, row in enumerate(rows):
+        rewards, fmt_hits, lengths = [], 0, []
+        for n in range(N_ROLLOUTS):
+            seq = gen[i, n]
+            real = seq[seq != tokenizer.pad_token_id]   # strip right-pad on finished seqs
+            text = tokenizer.decode(real, skip_special_tokens=True)
+            pred = extract_pred(text)
+            rewards.append(1.0 if is_correct(pred, row["gold"]) else 0.0)
+            fmt_hits += int(has_format(text))
+            lengths.append(int(real.numel()))
 
-    for seq in outputs:
-        completion_ids = seq[prompt_len:]
-        text = tokenizer.decode(completion_ids, skip_special_tokens=True)
-        pred = extract_pred(text)
-        rewards.append(1.0 if is_correct(pred, gold) else 0.0)
-        fmt_hits += int(has_format(text))
-        lengths.append(len(completion_ids))
-
-    mean_r = sum(rewards) / len(rewards)
-    var_r  = sum((r - mean_r) ** 2 for r in rewards) / len(rewards)
-
-    return {
-        "reward_mean":  round(mean_r, 4),
-        "reward_var":   round(var_r,  6),
-        "format_rate":  round(fmt_hits / N_ROLLOUTS, 4),
-        "mean_length":  round(sum(lengths) / len(lengths), 1),
-        "rewards_raw":  rewards,
-    }
+        mean_r = sum(rewards) / len(rewards)
+        var_r  = sum((r - mean_r) ** 2 for r in rewards) / len(rewards)
+        out.append({
+            "reward_mean":  round(mean_r, 4),
+            "reward_var":   round(var_r,  6),
+            "format_rate":  round(fmt_hits / N_ROLLOUTS, 4),
+            "mean_length":  round(sum(lengths) / len(lengths), 1),
+            "rewards_raw":  rewards,
+        })
+    return out
 
 
 # ── main loop ────────────────────────────────────────────────────────────────
 
-def process_cohort(path: Path, model, tokenizer, max_tasks: int | None):
+def process_cohort(path: Path, model, tokenizer, max_tasks: int | None, batch_size: int):
     rows = []
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -109,18 +116,27 @@ def process_cohort(path: Path, model, tokenizer, max_tasks: int | None):
     out_path = path.with_name(path.stem + "_signals.jsonl")
     results = []
 
-    for i, row in enumerate(rows):
-        print(f"  [{i+1}/{len(rows)}] {row['id']}", end=" ", flush=True)
+    for start in range(0, len(rows), batch_size):
+        batch = rows[start:start + batch_size]
 
-        prompt_str = build_prompt(row["question"], tokenizer)
-        prompt_ids = tokenizer(prompt_str, return_tensors="pt").input_ids[0]
+        # perplexity is a single cheap forward per task — keep it per-row so the
+        # loss-masking stays trivially correct; generation is what we batch.
+        ppls = []
+        for row in batch:
+            prompt_ids = tokenizer(
+                build_prompt(row["question"], tokenizer), return_tensors="pt"
+            ).input_ids[0]
+            ppls.append(prompt_perplexity(prompt_ids, model, tokenizer))
 
-        ppl = prompt_perplexity(prompt_ids, model, tokenizer)
-        sig = rollout_signals(prompt_ids, row["gold"], model, tokenizer)
+        sigs = rollout_signals_batch(batch, model, tokenizer)
 
-        result = {**row, "signals": {"prompt_ppl": round(ppl, 4), **sig}}
-        results.append(result)
-        print(f"ppl={ppl:.1f}  r_mean={sig['reward_mean']}  r_var={sig['reward_var']}")
+        for row, ppl, sig in zip(batch, ppls, sigs):
+            results.append({**row, "signals": {"prompt_ppl": round(ppl, 4), **sig}})
+
+        done = start + len(batch)
+        last = results[-1]["signals"]
+        print(f"  [{done}/{len(rows)}] ppl={last['prompt_ppl']:.1f}  "
+              f"r_mean={last['reward_mean']}  r_var={last['reward_var']}", flush=True)
 
     with out_path.open("w", encoding="utf-8") as f:
         for r in results:
@@ -149,6 +165,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cohort", default=None, help="Name of a single cohort to process")
     parser.add_argument("--max_tasks", type=int, default=None)
+    parser.add_argument("--batch_size", type=int, default=16,
+                        help="prompts per generate call; lower if you hit OOM")
     args = parser.parse_args()
 
     print(f"Loading {MODEL_ID}...")
@@ -157,6 +175,7 @@ def main():
     # attention masks are computed correctly during batched generation/scoring.
     if tokenizer.pad_token_id is None or tokenizer.pad_token_id == tokenizer.eos_token_id:
         tokenizer.add_special_tokens({"pad_token": "<|pad|>"})
+    tokenizer.padding_side = "left"   # uniform prompt len for batched generation
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID, dtype=torch.bfloat16, device_map="auto"
     )
@@ -178,7 +197,7 @@ def main():
     summaries = []
     for path in files:
         print(f"\n=== {path.name} ===")
-        summary = process_cohort(path, model, tokenizer, args.max_tasks)
+        summary = process_cohort(path, model, tokenizer, args.max_tasks, args.batch_size)
         summaries.append(summary)
         print(f"  cohort summary: {summary}")
 
