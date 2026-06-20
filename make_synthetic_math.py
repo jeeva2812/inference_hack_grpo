@@ -89,9 +89,9 @@ def make_trivial(idx, rng):
 
 # ── builders ─────────────────────────────────────────────────────────────────
 
-def build(mode: str, out: str, n: int, seed: int):
+def generate(mode: str, n: int, seed: int) -> list:
+    """Return n rows without writing any file. Importable by slice_cohorts_math.py."""
     rng = random.Random(seed)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     rows = []
 
     if mode == "trivial":
@@ -106,7 +106,6 @@ def build(mode: str, out: str, n: int, seed: int):
         idxs = idxs[:n]
 
         if mode == "mismatched":
-            # pair each question with a *different* question's solution
             shifted = idxs[1:] + idxs[:1]
             for qi, ai in zip(idxs, shifted):
                 rows.append(featurize(qi, ds[qi]["question"], ds[ai]["answer"], mode))
@@ -117,6 +116,12 @@ def build(mode: str, out: str, n: int, seed: int):
                 q, a = fn(ds[i]["question"], ds[i]["answer"], rng)
                 rows.append(featurize(i, q, a, mode))
 
+    return rows
+
+
+def build(mode: str, out: str, n: int, seed: int):
+    rows = generate(mode, n, seed)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / f"{out}.jsonl"
     with path.open("w", encoding="utf-8") as f:
         for r in rows:
