@@ -19,7 +19,7 @@ Loop all cohorts (Phase 2, in tmux):
 
 Knobs via env (so the runbook never edits code):
     REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts   # experiment tracking
-    MAX_STEPS=120 NUM_GENERATIONS=8              # game-plan Phase-2 values
+    MAX_STEPS=250 NUM_GENERATIONS=8              # game-plan Phase-2 values
     MAX_COMPLETION_LENGTH=1024                   # generation budget
 """
 
@@ -42,7 +42,7 @@ COHORT_DIR = Path("cohorts_code")
 REPORT_TO = os.environ.get("REPORT_TO", "none")
 # Phase-2 defaults follow the game plan (num_generations=8, 200-300 steps);
 # override down for a quick smoke test, e.g. MAX_STEPS=20.
-MAX_STEPS = int(os.environ.get("MAX_STEPS", "120"))
+MAX_STEPS = int(os.environ.get("MAX_STEPS", "250"))
 NUM_GENERATIONS = int(os.environ.get("NUM_GENERATIONS", "8"))
 # Generation/context budget. TRL 1.6.0's GRPOConfig only exposes the completion
 # side (no max_prompt_length); prompts are kept full.

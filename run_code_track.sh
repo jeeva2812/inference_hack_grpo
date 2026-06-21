@@ -6,10 +6,11 @@
 #   bash run_code_track.sh inference  # (GPU) load model, generate, verify — smoke_test_code
 #   bash run_code_track.sh grpo1      # (GPU) ONE short GRPO run + eval — the "test one sample" step
 #   bash run_code_track.sh phase1     # (GPU) base eval (acc_before) + signals on all cohorts
-#   bash run_code_track.sh phase2     # (GPU) train+eval each cohort, then merge -> summary
+#   bash run_code_track.sh phase2     # (GPU) train+eval each cohort, merge + build reports
+#   bash run_code_track.sh reports    # (no GPU) merge -> plots -> HTML report + PDF
 #   bash run_code_track.sh all        # check -> inference -> grpo1 -> phase1 -> phase2
 #
-# Knobs (env): EVAL_N (default 200), SMOKE_STEPS (15), MAX_STEPS (120),
+# Knobs (env): EVAL_N (default 200), SMOKE_STEPS (15), MAX_STEPS (250),
 #              NUM_GENERATIONS (8), MAX_COMPLETION_LENGTH (1024),
 #              REPORT_TO=wandb WANDB_PROJECT=grpo-cohorts
 set -euo pipefail
@@ -42,6 +43,19 @@ phase1() {
   python extract_signals_code.py
 }
 
+reports() {
+  echo "== Reports: merge -> plots -> HTML report + PDF (no GPU) =="
+  python merge_summary.py --domain code
+  python plots.py || true
+  python make_report.py || true
+  # HTML -> PDF via weasyprint (graceful if the lib/system deps are absent)
+  if python -c "from weasyprint import HTML; HTML('report/report.html').write_pdf('report/report.pdf')" 2>/dev/null; then
+    echo "   wrote report/report.pdf"
+  else
+    echo "   (weasyprint unavailable — open report/report.html and Print to PDF)"
+  fi
+}
+
 phase2() {
   echo "== STEP 4b / Phase 2: one identical GRPO run per cohort, eval each =="
   for c in $COHORTS; do
@@ -49,10 +63,9 @@ phase2() {
     RUN_NAME=code_$c python grpo_code.py --cohort "$c"
     python eval_code.py --model "outputs/code_$c" --label "$c" --n "$EVAL_N"
   done
-  # once all cohorts are trained+evaled: merge lift, then plot signals + correlations
-  python merge_summary.py --domain code
-  python plots.py
-  echo ">> results/code_summary.jsonl + report/ figures ready."
+  # once all cohorts are trained+evaled: merge lift, plot, and build the PDF reports
+  reports
+  echo ">> results/code_summary.jsonl + report/ (figures, report.html, report.pdf) ready."
   echo ">> Now: git add results/ report/ && git commit && git push"
 }
 
@@ -62,6 +75,7 @@ case "${1:-all}" in
   grpo1)     grpo1 ;;
   phase1)    phase1 ;;
   phase2)    phase2 ;;
+  reports)   reports ;;
   all)       check; inference; grpo1; phase1; phase2 ;;
-  *) echo "usage: bash run_code_track.sh {check|inference|grpo1|phase1|phase2|all}"; exit 1 ;;
+  *) echo "usage: bash run_code_track.sh {check|inference|grpo1|phase1|phase2|reports|all}"; exit 1 ;;
 esac

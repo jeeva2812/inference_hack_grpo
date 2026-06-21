@@ -14,7 +14,7 @@
 #   bash run_code_track.sh check   # ... inference / grpo1 / phase1 / phase2
 set -euo pipefail
 
-PKGS="torch transformers trl datasets accelerate numpy matplotlib wandb"
+PKGS="torch transformers trl datasets accelerate numpy matplotlib wandb weasyprint"
 
 echo "== 1/4: python venv =="
 if python3 -m venv --help >/dev/null 2>&1 && python3 -c "import ensurepip" >/dev/null 2>&1; then
@@ -37,6 +37,21 @@ python -m pip install -U pip wheel
 python -m pip install $PKGS
 # apply_chat_template needs jinja2>=3.1.0 (base image often ships 3.0.3)
 python -m pip install "jinja2>=3.1.0"
+
+# Report toolchain (best-effort, never fatal): phase2 renders report/report.html
+# -> PDF via weasyprint, which needs the pango/cairo runtime libs. If apt/sudo is
+# unavailable the reports step degrades gracefully to HTML only, so we don't let
+# any of this abort setup.
+echo "== extra: weasyprint runtime libs (best-effort) =="
+if command -v apt-get >/dev/null 2>&1; then
+  SUDO=""; command -v sudo >/dev/null 2>&1 && SUDO="sudo"
+  $SUDO apt-get update -qq || true
+  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev || \
+    echo "   (apt install skipped/failed — phase2 will emit report.html only)"
+else
+  echo "   (no apt-get — phase2 will emit report.html only; install weasyprint libs for PDF)"
+fi
 
 echo "== 3/4: sanity check =="
 python - <<'PY'

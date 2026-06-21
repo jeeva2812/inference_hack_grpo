@@ -1,7 +1,7 @@
 {"label": "smoke_check", "model": "outputs/code_smoke", "n": 16, "accuracy": 0.3125}
 {"label": "base", "model": "Qwen/Qwen2.5-1.5B-Instruct", "n": 200, "accuracy": 0.39}
-{"label": "benchmark_slice", "model": "outputs/code_benchmark_slice", "n": 200, "accuracy": 0.4}
-{"label": "harder_sibling", "model": "outputs/code_harder_sibling", "n": 200, "accuracy": 0.39}
-{"label": "synthetic_good", "model": "outputs/code_synthetic_good", "n": 200, "accuracy": 0.395}
-{"label": "synthetic_degraded", "model": "outputs/code_synthetic_degraded", "n": 200, "accuracy": 0.395}
-{"label": "random_control", "model": "outputs/code_random_control", "n": 200, "accuracy": 0.385}
+{"label": "benchmark_slice", "model": "outputs/code_benchmark_slice", "n": 200, "accuracy": 0.395}
+{"label": "harder_sibling", "model": "outputs/code_harder_sibling", "n": 200, "accuracy": 0.405}
+{"label": "synthetic_good", "model": "outputs/code_synthetic_good", "n": 200, "accuracy": 0.405}
+{"label": "synthetic_degraded", "model": "outputs/code_synthetic_degraded", "n": 200, "accuracy": 0.39}
+{"label": "random_control", "model": "outputs/code_random_control", "n": 200, "accuracy": 0.39}

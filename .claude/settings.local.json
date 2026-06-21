@@ -10,7 +10,19 @@
       "Bash(env)",
       "Read(//home/ubuntu/.cache/huggingface/**)",
       "Read(//home/ubuntu/**)",
-      "Bash(./venv/bin/hf auth *)"
+      "Bash(./venv/bin/hf auth *)",
+      "Bash(sudo apt-get update -qq)",
+      "Bash(sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended)",
+      "Bash(command -v pdflatex)",
+      "Bash(mv -f report/report.pdf report/report_latex.pdf)",
+      "Bash(pdftoppm -png -r 10 report/report_latex.pdf /tmp/_x)",
+      "Read(//tmp/**)",
+      "Bash(sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils)",
+      "Bash(command -v pdftoppm)",
+      "Bash(pdftoppm -png -r 110 -f 1 -l 2 report/report_latex.pdf /tmp/ltx)",
+      "Bash(pdftotext report/report_latex.pdf -)",
+      "Bash(pdfinfo report/report_html.pdf)",
+      "Bash(grep -c \"^•[[:space:]]*$\")"
     ]
   }
 }
